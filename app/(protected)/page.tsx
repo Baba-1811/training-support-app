@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/prisma";
+import { StartWorkoutForm } from "@/components/workouts/start-workout-form";
 
 export default async function Home() {
   await requireUser();
@@ -24,6 +25,8 @@ export default async function Home() {
       <h1 className="mb-6 text-2xl font-bold">
         Training Support
       </h1>
+
+      <StartWorkoutForm />
 
       <h2 className="mb-4 text-xl font-semibold">
         Exercise List
