@@ -1,0 +1,328 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// Enums
+// ============================================================
+
+enum TrainingLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum GoalType {
+  ESTIMATED_1RM
+  BODY_WEIGHT
+  TRAINING_FREQUENCY
+}
+
+enum GoalStatus {
+  ACTIVE
+  ACHIEVED
+  CANCELLED
+}
+
+enum MuscleRole {
+  PRIMARY
+  SECONDARY
+}
+
+enum EquipmentType {
+  BARBELL
+  DUMBBELL
+  MACHINE
+  CABLE
+  BODYWEIGHT
+  OTHER
+}
+
+enum WorkoutPlanStatus {
+  PROPOSED
+  ACCEPTED
+  REJECTED
+  COMPLETED
+}
+
+enum WorkoutSessionStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum SetType {
+  WARMUP
+  WORKING
+}
+
+// ============================================================
+// User
+// ============================================================
+
+model User {
+  id                   String        @id @default(uuid()) @db.Uuid
+  email                String        @unique @db.VarChar(255)
+  name                 String        @db.VarChar(100)
+  trainingLevel        TrainingLevel
+  weeklyTrainingTarget Int?
+  heightCm             Int?
+  createdAt            DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime      @updatedAt @db.Timestamptz(6)
+
+  goals            Goal[]
+  bodyMeasurements BodyMeasurement[]
+  dailyConditions  DailyCondition[]
+  workoutPlans     WorkoutPlan[]
+  workoutSessions  WorkoutSession[]
+}
+
+// ============================================================
+// BodyMeasurement
+// ============================================================
+
+model BodyMeasurement {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  weightKg       Decimal  @db.Decimal(5, 2)
+  bodyFatPercent Decimal? @db.Decimal(5, 2)
+  measuredAt     DateTime @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, measuredAt])
+}
+
+// ============================================================
+// Goal
+// ============================================================
+
+model Goal {
+  id          String     @id @default(uuid()) @db.Uuid
+  userId      String     @db.Uuid
+  exerciseId  String?    @db.Uuid
+  goalType    GoalType
+  targetValue Decimal    @db.Decimal(8, 2)
+  targetDate  DateTime?  @db.Date
+  status      GoalStatus @default(ACTIVE)
+  createdAt   DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime   @updatedAt @db.Timestamptz(6)
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise Exercise? @relation(fields: [exerciseId], references: [id])
+
+  @@index([userId, status])
+  @@index([exerciseId])
+}
+
+// ============================================================
+// DailyCondition
+// ============================================================
+
+model DailyCondition {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @db.Uuid
+  conditionDate    DateTime @db.Date
+  sleepHours       Decimal? @db.Decimal(4, 2)
+  fatigueLevel     Int?
+  availableMinutes Int?
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(6)
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  muscleConditions MuscleCondition[]
+  workoutPlans     WorkoutPlan[]
+
+  @@unique([userId, conditionDate])
+}
+
+// ============================================================
+// MuscleCondition
+// ============================================================
+
+model MuscleCondition {
+  id               String @id @default(uuid()) @db.Uuid
+  dailyConditionId String @db.Uuid
+  muscleId         String @db.Uuid
+  sorenessLevel    Int
+
+  dailyCondition DailyCondition @relation(fields: [dailyConditionId], references: [id], onDelete: Cascade)
+  muscle         Muscle         @relation(fields: [muscleId], references: [id])
+
+  @@unique([dailyConditionId, muscleId])
+  @@index([muscleId])
+}
+
+// ============================================================
+// Muscle
+// ============================================================
+
+model Muscle {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String   @unique @db.VarChar(100)
+  bodyRegion String?  @db.VarChar(100)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+
+  muscleConditions MuscleCondition[]
+  exerciseMuscles  ExerciseMuscle[]
+}
+
+// ============================================================
+// Exercise
+// ============================================================
+
+model Exercise {
+  id            String        @id @default(uuid()) @db.Uuid
+  name          String        @unique @db.VarChar(100)
+  description   String?       @db.Text
+  instructions  String?       @db.Text
+  tips          String?       @db.Text
+  equipmentType EquipmentType
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime      @updatedAt @db.Timestamptz(6)
+
+  goals                Goal[]
+  exerciseMuscles      ExerciseMuscle[]
+  workoutPlanExercises WorkoutPlanExercise[]
+  workoutExercises     WorkoutExercise[]
+}
+
+// ============================================================
+// ExerciseMuscle
+// Exercise <-> Muscle の中間テーブル
+// ============================================================
+
+model ExerciseMuscle {
+  exerciseId String     @db.Uuid
+  muscleId   String     @db.Uuid
+  role       MuscleRole
+
+  exercise Exercise @relation(fields: [exerciseId], references: [id])
+  muscle   Muscle   @relation(fields: [muscleId], references: [id])
+
+  @@id([exerciseId, muscleId])
+  @@index([muscleId])
+}
+
+// ============================================================
+// WorkoutPlan
+// ============================================================
+
+model WorkoutPlan {
+  id                   String            @id @default(uuid()) @db.Uuid
+  userId               String            @db.Uuid
+  sourceConditionId    String?           @db.Uuid
+  plannedDate          DateTime          @db.Date
+  status               WorkoutPlanStatus @default(PROPOSED)
+  recommendationReason String?           @db.Text
+  createdAt            DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime          @updatedAt @db.Timestamptz(6)
+
+  user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceCondition DailyCondition?       @relation(fields: [sourceConditionId], references: [id])
+  exercises       WorkoutPlanExercise[]
+  workoutSessions WorkoutSession[]
+
+  @@index([userId, plannedDate])
+  @@index([sourceConditionId])
+}
+
+// ============================================================
+// WorkoutPlanExercise
+// ============================================================
+
+model WorkoutPlanExercise {
+  id             String   @id @default(uuid()) @db.Uuid
+  workoutPlanId  String   @db.Uuid
+  exerciseId     String   @db.Uuid
+  exerciseOrder  Int
+  targetWeightKg Decimal? @db.Decimal(6, 2)
+  targetRepsMin  Int?
+  targetRepsMax  Int?
+  targetSets     Int
+  restSeconds    Int?
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  workoutPlan WorkoutPlan @relation(fields: [workoutPlanId], references: [id], onDelete: Cascade)
+  exercise    Exercise    @relation(fields: [exerciseId], references: [id])
+
+  @@unique([workoutPlanId, exerciseOrder])
+  @@index([exerciseId])
+}
+
+// ============================================================
+// WorkoutSession
+// 実際に行った1回のトレーニング
+// ============================================================
+
+model WorkoutSession {
+  id            String               @id @default(uuid()) @db.Uuid
+  userId        String               @db.Uuid
+  workoutPlanId String?              @db.Uuid
+  startedAt     DateTime             @db.Timestamptz(6)
+  completedAt   DateTime?            @db.Timestamptz(6)
+  status        WorkoutSessionStatus @default(IN_PROGRESS)
+  note          String?              @db.Text
+  createdAt     DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime             @updatedAt @db.Timestamptz(6)
+
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workoutPlan WorkoutPlan?      @relation(fields: [workoutPlanId], references: [id])
+  exercises   WorkoutExercise[]
+
+  @@index([userId, startedAt])
+  @@index([workoutPlanId])
+}
+
+// ============================================================
+// WorkoutExercise
+// 1回のトレーニング内で実施した種目
+// ============================================================
+
+model WorkoutExercise {
+  id               String   @id @default(uuid()) @db.Uuid
+  workoutSessionId String   @db.Uuid
+  exerciseId       String   @db.Uuid
+  exerciseOrder    Int
+  note             String?  @db.Text
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+
+  workoutSession WorkoutSession @relation(fields: [workoutSessionId], references: [id], onDelete: Cascade)
+  exercise       Exercise       @relation(fields: [exerciseId], references: [id])
+  sets           WorkoutSet[]
+
+  @@unique([workoutSessionId, exerciseOrder])
+  @@index([workoutSessionId, exerciseId])
+  @@index([exerciseId])
+}
+
+// ============================================================
+// WorkoutSet
+// 実際に行った1セット
+// ============================================================
+
+model WorkoutSet {
+  id                String    @id @default(uuid()) @db.Uuid
+  workoutExerciseId String    @db.Uuid
+  setNumber         Int
+  weightKg          Decimal   @db.Decimal(6, 2)
+  reps              Int
+  setType           SetType   @default(WORKING)
+  rir               Decimal?  @db.Decimal(3, 1)
+  completed         Boolean   @default(false)
+  completedAt       DateTime? @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+
+  workoutExercise WorkoutExercise @relation(fields: [workoutExerciseId], references: [id], onDelete: Cascade)
+
+  @@unique([workoutExerciseId, setNumber])
+}
