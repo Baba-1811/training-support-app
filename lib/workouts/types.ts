@@ -13,3 +13,9 @@ export type ActionResult<T> = { ok: true; data: T } | {
   ok: false; code: "VALIDATION" | "NOT_FOUND" | "INVALID_STATE" | "CONFLICT" | "FAILED";
   message: string; fieldErrors?: Record<string, string[]>;
 };
+export type WorkoutHistorySummaryDTO = {
+  id: string; title: string | null; startedAt: string; completedAt: string;
+  exerciseNames: string[]; workingSetCount: number;
+};
+export type PreviousSetDTO = { weightKg: string; reps: number };
+export type PreviousExercisePerformanceDTO = { startedAt: string; sets: PreviousSetDTO[] } | null;
