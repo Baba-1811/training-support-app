@@ -3,7 +3,7 @@ export type SetDTO = {
   setType: "WORKING" | "WARMUP"; completed: boolean;
 };
 export type ExerciseDTO = {
-  id: string; exerciseId: string; name: string; exerciseOrder: number; sets: SetDTO[];
+  id: string; exerciseId: string; name: string; exerciseOrder: number; muscles: string[]; sets: SetDTO[];
 };
 export type WorkoutDTO = {
   id: string; title: string | null; startedAt: string; completedAt: string | null;
