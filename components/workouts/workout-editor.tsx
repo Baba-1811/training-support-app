@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import * as actions from "@/app/(protected)/workouts/actions";
 import { workoutTitle } from "@/lib/workouts/calculations";
-import type { ActionResult, WorkoutDTO, SetDTO } from "@/lib/workouts/types";
+import type { ActionResult, PreviousExercisePerformanceDTO, WorkoutDTO, SetDTO } from "@/lib/workouts/types";
 import { SetRow, SetRowHeader, type Row } from "./set-row";
 
 const savedRow = (set: SetDTO): Row => ({ key: `set-${set.id}`, id: set.id, setNumber: set.setNumber,
@@ -24,6 +24,25 @@ function reconcile(workout: WorkoutDTO, previous: Record<string, Row[]> = {}): R
     }
     return [exercise.id, rows.sort((a, b) => a.setNumber - b.setNumber)];
   }));
+}
+
+function formatShortDate(iso: string): string {
+  const parts = new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric" }).formatToParts(new Date(iso));
+  const month = parts.find((part) => part.type === "month")!.value;
+  const day = parts.find((part) => part.type === "day")!.value;
+  return `${month}/${day}`;
+}
+
+function PreviousPerformance({ performance }: { performance: PreviousExercisePerformanceDTO }) {
+  if (!performance || performance.sets.length === 0) {
+    return <p className="mb-3 rounded-xl border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-400">前回記録なし</p>;
+  }
+  return <div className="mb-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+    <p className="text-[11px] font-medium text-slate-500">前回 {formatShortDate(performance.startedAt)}</p>
+    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs tabular-nums text-slate-600">
+      {performance.sets.map((set, index) => <span key={index}>{set.weightKg}kg × {set.reps}</span>)}
+    </div>
+  </div>;
 }
 
 function StatusBadge({ status }: { status: WorkoutDTO["status"] }) {
@@ -57,8 +76,9 @@ function useElapsedLabel(startedAt: string, active: boolean): string | null {
   return label;
 }
 
-export function WorkoutEditor({ initialWorkout, availableExercises }: {
+export function WorkoutEditor({ initialWorkout, availableExercises, previousPerformance }: {
   initialWorkout: WorkoutDTO; availableExercises: Array<{ id: string; name: string }>;
+  previousPerformance: Record<string, PreviousExercisePerformanceDTO>;
 }) {
   const [workout, setWorkout] = useState(initialWorkout);
   const [rows, setRows] = useState(() => reconcile(initialWorkout));
@@ -82,8 +102,9 @@ export function WorkoutEditor({ initialWorkout, availableExercises }: {
     } catch { setError("通信に失敗しました。入力を確認して再試行してください。"); }
     finally { setPending(false); }
   }
+  const back = workout.status === "COMPLETED" ? { href: "/history", label: "← 履歴" } : { href: "/", label: "← ホーム" };
   return <main className="mx-auto w-full max-w-[480px] px-4 py-5 text-slate-900">
-    <Link href="/" className="inline-flex items-center gap-1 text-sm text-slate-500 active:text-orange-600">← ホーム</Link>
+    <Link href={back.href} className="inline-flex items-center gap-1 text-sm text-slate-500 active:text-orange-600">{back.label}</Link>
     <fieldset disabled={pending || !editable} className="mt-3 min-w-0 space-y-3">
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-start justify-between gap-3">
@@ -130,6 +151,7 @@ export function WorkoutEditor({ initialWorkout, availableExercises }: {
             if (window.confirm(`${exercise.name}と配下の記録済みセットをすべて削除します。よろしいですか？`)) void run(() => actions.deleteWorkoutExercise({ workoutExerciseId: exercise.id }));
           }}>×</button>
         </div>
+        {active && <PreviousPerformance performance={previousPerformance[exercise.exerciseId] ?? null} />}
         {(rows[exercise.id] ?? []).length > 0 && <>
           <SetRowHeader />
           <details className="mb-1 px-0.5 text-[11px] text-slate-400">
