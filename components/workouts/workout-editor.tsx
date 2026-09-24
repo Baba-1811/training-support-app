@@ -3,7 +3,9 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import * as actions from "@/app/(protected)/workouts/actions";
 import { workoutTitle } from "@/lib/workouts/calculations";
-import type { ActionResult, PreviousExercisePerformanceDTO, WorkoutDTO, SetDTO } from "@/lib/workouts/types";
+import { summarizePerformance } from "@/lib/workouts/analytics";
+import { formatE1rm, formatE1rmDelta, formatVolume, formatVolumeDelta } from "@/lib/workouts/analytics-format";
+import type { ActionResult, ExerciseAnalyticsDTO, ExerciseDTO, PreviousExercisePerformanceDTO, WorkoutDTO, SetDTO } from "@/lib/workouts/types";
 import { SetRow, SetRowHeader, type Row } from "./set-row";
 
 const savedRow = (set: SetDTO): Row => ({ key: `set-${set.id}`, id: set.id, setNumber: set.setNumber,
@@ -45,6 +47,49 @@ function PreviousPerformance({ performance }: { performance: PreviousExercisePer
   </div>;
 }
 
+// Provisional numbers for the in-progress workout, derived from the sets confirmed so far. Not history analysis.
+function ProvisionalSummary({ exercise }: { exercise: ExerciseDTO }) {
+  const summary = summarizePerformance(exercise.sets);
+  if (!summary) return null;
+  return <p className="mb-3 flex flex-wrap gap-x-3 text-xs tabular-nums text-slate-500">
+    <span className="font-medium text-slate-400">今回（暫定）</span>
+    <span>推定1RM {formatE1rm(summary.e1rmKg)}</span>
+    <span>Volume {formatVolume(summary.volumeKg)}</span>
+  </p>;
+}
+
+function deltaClass(delta: number): string {
+  return delta > 0 ? "text-emerald-600" : delta < 0 ? "text-red-500" : "text-slate-400";
+}
+
+function ExerciseAnalytics({ analytics }: { analytics: ExerciseAnalyticsDTO | undefined }) {
+  // Not loaded yet (e.g. just finished, server refresh pending) is different from "no analyzable sets".
+  if (!analytics) return null;
+  if (!analytics.current) {
+    return <p className="mt-3 rounded-xl border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-400">分析できる本セットがありません</p>;
+  }
+  const { current, comparison, personalBestE1rmKg, recordStatus } = analytics;
+  return <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
+    <div className="flex items-center justify-between gap-2">
+      <p className="text-[11px] font-medium text-slate-500">分析</p>
+      {recordStatus === "NEW_BEST" && <span className="rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700">自己ベスト更新</span>}
+      {recordStatus === "FIRST_RECORD" && <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500">初記録</span>}
+    </div>
+    <dl className="mt-2 grid grid-cols-2 gap-3 text-sm tabular-nums">
+      <div><dt className="text-[11px] text-slate-400">推定1RM</dt><dd className="font-semibold text-slate-900">{formatE1rm(current.e1rmKg)}</dd></div>
+      <div><dt className="text-[11px] text-slate-400">Volume</dt><dd className="font-semibold text-slate-900">{formatVolume(current.volumeKg)}</dd></div>
+      <div><dt className="text-[11px] text-slate-400">自己ベスト</dt><dd className="font-semibold text-slate-900">{personalBestE1rmKg === null ? "-" : formatE1rm(personalBestE1rmKg)}</dd></div>
+    </dl>
+    <div className="mt-2 border-t border-slate-200 pt-2 text-xs tabular-nums">
+      <p className="text-[11px] text-slate-400">前回比{analytics.previous ? `（${formatShortDate(analytics.previous.startedAt)}）` : ""}</p>
+      {comparison ? <div className="mt-0.5 flex flex-wrap gap-x-4">
+        <span>e1RM <span className={`font-semibold ${deltaClass(comparison.e1rmDeltaKg)}`}>{formatE1rmDelta(comparison.e1rmDeltaKg)}</span></span>
+        <span>Volume <span className={`font-semibold ${deltaClass(comparison.volumeDeltaKg)}`}>{formatVolumeDelta(comparison.volumeDeltaKg)}</span></span>
+      </div> : <p className="mt-0.5 text-slate-400">前回記録なし</p>}
+    </div>
+  </div>;
+}
+
 function StatusBadge({ status }: { status: WorkoutDTO["status"] }) {
   const style = {
     IN_PROGRESS: { label: "トレーニング中", className: "border-orange-200 bg-orange-50 text-orange-700" },
@@ -76,9 +121,10 @@ function useElapsedLabel(startedAt: string, active: boolean): string | null {
   return label;
 }
 
-export function WorkoutEditor({ initialWorkout, availableExercises, previousPerformance }: {
+export function WorkoutEditor({ initialWorkout, availableExercises, previousPerformance, analytics }: {
   initialWorkout: WorkoutDTO; availableExercises: Array<{ id: string; name: string }>;
   previousPerformance: Record<string, PreviousExercisePerformanceDTO>;
+  analytics: Record<string, ExerciseAnalyticsDTO>;
 }) {
   const [workout, setWorkout] = useState(initialWorkout);
   const [rows, setRows] = useState(() => reconcile(initialWorkout));
@@ -152,6 +198,7 @@ export function WorkoutEditor({ initialWorkout, availableExercises, previousPerf
           }}>×</button>
         </div>
         {active && <PreviousPerformance performance={previousPerformance[exercise.exerciseId] ?? null} />}
+        {active && <ProvisionalSummary exercise={exercise} />}
         {(rows[exercise.id] ?? []).length > 0 && <>
           <SetRowHeader />
           <details className="mb-1 px-0.5 text-[11px] text-slate-400">
@@ -175,6 +222,7 @@ export function WorkoutEditor({ initialWorkout, availableExercises, previousPerf
             if (row.id) void run(() => actions.deleteSet({ setId: row.id }));
             else setRows({ ...rows, [exercise.id]: rows[exercise.id].filter((item) => item.key !== row.key) });
           }} />)}
+        {workout.status === "COMPLETED" && <ExerciseAnalytics analytics={analytics[exercise.id]} />}
         {active && <button type="button" className="mt-2 w-full rounded-xl border border-dashed border-orange-200 py-2.5 text-sm font-medium text-orange-600 active:bg-orange-50" onClick={() => setRows({ ...rows, [exercise.id]: [...rows[exercise.id], blankRow(Math.max(0, ...rows[exercise.id].map((row) => row.setNumber)) + 1)] })}>＋ セットを追加</button>}
       </section>)}
 

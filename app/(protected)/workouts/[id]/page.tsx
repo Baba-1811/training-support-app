@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/prisma";
-import { getWorkout, getPreviousExercisePerformance } from "@/lib/workouts/queries";
+import { getWorkout, getPreviousExercisePerformance, getWorkoutAnalytics } from "@/lib/workouts/queries";
 import { workoutIdSchema } from "@/lib/workouts/validation";
 import { WorkoutEditor } from "@/components/workouts/workout-editor";
 
@@ -18,5 +18,6 @@ export default async function WorkoutPage({ params }: { params: Promise<{ id: st
   const previousPerformance = active ? await getPreviousExercisePerformance(
     workout.id, workout.startedAt, workout.exercises.map((exercise) => exercise.exerciseId),
   ) : {};
-  return <WorkoutEditor initialWorkout={workout} availableExercises={exercises} previousPerformance={previousPerformance} />;
+  const analytics = workout.status === "COMPLETED" ? await getWorkoutAnalytics(workout) : {};
+  return <WorkoutEditor initialWorkout={workout} availableExercises={exercises} previousPerformance={previousPerformance} analytics={analytics} />;
 }
