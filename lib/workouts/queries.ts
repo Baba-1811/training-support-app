@@ -1,7 +1,10 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/require-user";
-import type { PreviousExercisePerformanceDTO, WorkoutDTO, WorkoutHistorySummaryDTO } from "./types";
+import { buildWorkoutAnalytics } from "./analytics";
+import type {
+  ExerciseAnalyticsDTO, ExerciseHistoryRecord, PreviousExercisePerformanceDTO, WorkoutDTO, WorkoutHistorySummaryDTO,
+} from "./types";
 
 export async function getWorkout(id: string): Promise<WorkoutDTO | null> {
   const user = await requireUser();
@@ -81,4 +84,31 @@ export async function getPreviousExercisePerformance(
     return [exerciseId, value] as const;
   }));
   return Object.fromEntries(entries);
+}
+
+// Confirmed analytics for a COMPLETED workout. `workout` must come from getWorkout (ownership-checked);
+// history is still scoped to the authenticated user here. One query covers every exercise (no N+1);
+// e1RM / volume / best / previous are all derived in analytics.ts and never stored.
+export async function getWorkoutAnalytics(workout: WorkoutDTO): Promise<Record<string, ExerciseAnalyticsDTO>> {
+  const user = await requireUser();
+  if (workout.status !== "COMPLETED") return {};
+  const exerciseIds = [...new Set(workout.exercises.map((entry) => entry.exerciseId))];
+  const historyByExercise: Record<string, ExerciseHistoryRecord[]> = {};
+  if (exerciseIds.length > 0) {
+    const entries = await prisma.workoutExercise.findMany({
+      where: { exerciseId: { in: exerciseIds }, workoutSession: { userId: user.id, status: "COMPLETED", id: { not: workout.id } } },
+      select: {
+        exerciseId: true,
+        workoutSession: { select: { id: true, startedAt: true } },
+        sets: { where: { completed: true, setType: "WORKING" }, select: { weightKg: true, reps: true, setType: true, completed: true } },
+      },
+    });
+    for (const entry of entries) {
+      (historyByExercise[entry.exerciseId] ??= []).push({
+        sessionId: entry.workoutSession.id, startedAt: entry.workoutSession.startedAt.toISOString(),
+        sets: entry.sets.map((set) => ({ weightKg: set.weightKg.toString(), reps: set.reps, setType: set.setType, completed: set.completed })),
+      });
+    }
+  }
+  return buildWorkoutAnalytics(workout, historyByExercise);
 }
