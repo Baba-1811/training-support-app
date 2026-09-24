@@ -11,6 +11,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
       <nav className="flex items-center gap-4 text-sm font-medium text-slate-600">
         <Link href="/" className="active:text-orange-600">記録</Link>
         <Link href="/history" className="active:text-orange-600">履歴</Link>
+        <Link href="/analytics" className="active:text-orange-600">分析</Link>
       </nav>
       <div className="flex items-center gap-3">
         <span className="break-all text-sm">{user.name}さん</span>
