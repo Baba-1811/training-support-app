@@ -2,8 +2,9 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/require-user";
 import { buildWorkoutAnalytics } from "./analytics";
+import { buildExerciseTrends } from "./analytics-trend";
 import type {
-  ExerciseAnalyticsDTO, ExerciseHistoryRecord, PreviousExercisePerformanceDTO, WorkoutDTO, WorkoutHistorySummaryDTO,
+  ExerciseAnalyticsDTO, ExerciseHistoryRecord, ExerciseTrend, PreviousExercisePerformanceDTO, WorkoutDTO, WorkoutHistorySummaryDTO,
 } from "./types";
 
 export async function getWorkout(id: string): Promise<WorkoutDTO | null> {
@@ -111,4 +112,30 @@ export async function getWorkoutAnalytics(workout: WorkoutDTO): Promise<Record<s
     }
   }
   return buildWorkoutAnalytics(workout, historyByExercise);
+}
+
+// Growth trends for the /analytics page. The owner's COMPLETED sessions only, and only entries that have at
+// least one completed WORKING set. One query for every exercise (no per-exercise N+1); grouping into
+// exercises / workouts and all e1RM / volume math happens in analytics-trend.ts. The period filter is applied
+// on the client from this full series, so this query has no date bound. Existing indexes cover it:
+// WorkoutSession(userId, startedAt), WorkoutExercise(workoutSessionId, exerciseId), WorkoutSet(workoutExerciseId, setNumber).
+export async function listExerciseTrends(): Promise<ExerciseTrend[]> {
+  const user = await requireUser();
+  const entries = await prisma.workoutExercise.findMany({
+    where: {
+      workoutSession: { userId: user.id, status: "COMPLETED" },
+      sets: { some: { completed: true, setType: "WORKING" } },
+    },
+    select: {
+      exerciseId: true,
+      exercise: { select: { name: true } },
+      workoutSession: { select: { id: true, startedAt: true } },
+      sets: { where: { completed: true, setType: "WORKING" }, select: { weightKg: true, reps: true, setType: true, completed: true } },
+    },
+  });
+  return buildExerciseTrends(entries.map((entry) => ({
+    exerciseId: entry.exerciseId, exerciseName: entry.exercise.name,
+    sessionId: entry.workoutSession.id, startedAt: entry.workoutSession.startedAt.toISOString(),
+    sets: entry.sets.map((set) => ({ weightKg: set.weightKg.toString(), reps: set.reps, setType: set.setType, completed: set.completed })),
+  })));
 }

@@ -38,19 +38,26 @@ export function comparePerformance(current: PerformanceSummary, previous: Perfor
 }
 
 // A session may hold the same exercise more than once; treat those as one workout's performance.
-function summarizeBySession(history: readonly ExerciseHistoryRecord[]): Array<PerformanceSummary & { startedAt: string }> {
+// Shared by the per-workout comparison (Phase 1) and the growth trend (Phase 2) so both use one definition.
+export function summarizeSessions(
+  history: readonly ExerciseHistoryRecord[],
+): Array<PerformanceSummary & { sessionId: string; startedAt: string }> {
   const grouped = new Map<string, { startedAt: string; sets: AnalyticsSet[] }>();
   for (const record of history) {
     const entry = grouped.get(record.sessionId);
     if (entry) entry.sets.push(...record.sets);
     else grouped.set(record.sessionId, { startedAt: record.startedAt, sets: [...record.sets] });
   }
-  const result: Array<PerformanceSummary & { startedAt: string }> = [];
-  for (const { startedAt, sets } of grouped.values()) {
+  const result: Array<PerformanceSummary & { sessionId: string; startedAt: string }> = [];
+  for (const [sessionId, { startedAt, sets }] of grouped) {
     const summary = summarizePerformance(sets);
-    if (summary) result.push({ ...summary, startedAt });
+    if (summary) result.push({ ...summary, sessionId, startedAt });
   }
   return result;
+}
+
+function summarizeBySession(history: readonly ExerciseHistoryRecord[]): Array<PerformanceSummary & { startedAt: string }> {
+  return summarizeSessions(history).map(({ startedAt, e1rmKg, volumeKg, workingSetCount }) => ({ startedAt, e1rmKg, volumeKg, workingSetCount }));
 }
 
 const maxE1rm = (summaries: ReadonlyArray<PerformanceSummary>): number | null =>

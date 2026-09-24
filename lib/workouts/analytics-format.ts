@@ -15,3 +15,7 @@ function signed(delta: number, minimumFractionDigits: number): string {
 }
 export const formatE1rmDelta = (kg: number) => signed(kg, 1);
 export const formatVolumeDelta = (kg: number) => signed(kg, 0);
+
+// Chart date label ("9/24") in Asia/Tokyo, the app's display timezone. Display only; period filtering uses instants.
+export const formatChartDate = (timestamp: number | string) =>
+  new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric" }).format(new Date(timestamp));

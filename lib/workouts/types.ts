@@ -37,3 +37,18 @@ export type ExerciseAnalyticsDTO = {
   personalBestE1rmKg: number | null;
   recordStatus: RecordStatus;
 };
+
+// Analytics Phase 2: per-exercise growth over time. Derived values only; nothing here is persisted.
+export type TrendPeriod = "1M" | "3M" | "ALL";
+// One COMPLETED workout's performance for one exercise (same-exercise entries within a workout are merged).
+export type TrendPoint = PerformanceSummary & { sessionId: string; startedAt: string };
+export type ExerciseTrend = { exerciseId: string; name: string; points: TrendPoint[] };
+// A WorkoutExercise row of a past COMPLETED session, as loaded for the trend page.
+export type ExerciseTrendRecord = ExerciseHistoryRecord & { exerciseId: string; exerciseName: string };
+export type TrendSummary = {
+  pointCount: number;
+  latest: TrendPoint | null;
+  oldest: TrendPoint | null;
+  // latest - oldest within the period; null when there is nothing to compare (fewer than two points).
+  comparison: PerformanceComparison | null;
+};
