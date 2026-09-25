@@ -1,5 +1,5 @@
 import { comparePerformance, summarizeSessions } from "./analytics";
-import type { ExerciseTrend, ExerciseTrendRecord, TrendPeriod, TrendPoint, TrendSummary } from "./types";
+import type { ExerciseTrend, ExerciseTrendRecord, PerformanceComparison, TrendPeriod, TrendPoint, TrendSummary } from "./types";
 
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const PERIOD_MONTHS: Record<Exclude<TrendPeriod, "ALL">, number> = { "1M": 1, "3M": 3 };
@@ -25,6 +25,16 @@ export function buildExerciseTrends(records: readonly ExerciseTrendRecord[]): Ex
   }
   const latest = (trend: ExerciseTrend) => new Date(trend.points[trend.points.length - 1].startedAt).getTime();
   return trends.sort((a, b) => latest(b) - latest(a) || a.name.localeCompare(b.name, "ja"));
+}
+
+// Home "growth snapshot": the most recently performed exercise, its latest workout and the change from the
+// workout before it. Reuses summarizeTrend on the last two points, so the delta is the same Phase 1 comparison.
+// `comparison` is null when the exercise has only one workout (nothing to compare, not "no change").
+export function buildGrowthSnapshot(trends: readonly ExerciseTrend[]): { name: string; latest: TrendPoint; comparison: PerformanceComparison | null } | null {
+  const trend = trends[0];
+  if (!trend) return null;
+  const { latest, comparison } = summarizeTrend(trend.points.slice(-2));
+  return latest ? { name: trend.name, latest, comparison } : null;
 }
 
 // Calendar-month cutoff, computed on the Asia/Tokyo calendar (the app's display timezone; JST has no DST so a

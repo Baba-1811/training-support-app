@@ -39,11 +39,13 @@ export async function getWorkout(id: string): Promise<WorkoutDTO | null> {
 }
 
 // History: completed sessions only, newest first. IN_PROGRESS/CANCELLED are never analysis targets.
-export async function listCompletedWorkouts(): Promise<WorkoutHistorySummaryDTO[]> {
+// `limit` (Home / Analytics "recent workouts") bounds the query itself; the shape and ownership scope are the same.
+export async function listCompletedWorkouts(limit?: number): Promise<WorkoutHistorySummaryDTO[]> {
   const user = await requireUser();
   const sessions = await prisma.workoutSession.findMany({
     where: { userId: user.id, status: "COMPLETED" },
     orderBy: { startedAt: "desc" },
+    ...(limit === undefined ? {} : { take: limit }),
     include: { exercises: {
       orderBy: { exerciseOrder: "asc" },
       include: { exercise: { select: { name: true } }, sets: { select: { setType: true, completed: true } } },
@@ -112,6 +114,18 @@ export async function getWorkoutAnalytics(workout: WorkoutDTO): Promise<Record<s
     }
   }
   return buildWorkoutAnalytics(workout, historyByExercise);
+}
+
+// In-progress workouts of the owner, newest first, so the record tab can offer to resume one
+// (the editor has no other way back once the user navigates away). Ids and timestamps only.
+export async function listInProgressWorkouts(): Promise<Array<{ id: string; title: string | null; startedAt: string }>> {
+  const user = await requireUser();
+  const sessions = await prisma.workoutSession.findMany({
+    where: { userId: user.id, status: "IN_PROGRESS" },
+    orderBy: { startedAt: "desc" },
+    select: { id: true, title: true, startedAt: true },
+  });
+  return sessions.map((session) => ({ id: session.id, title: session.title, startedAt: session.startedAt.toISOString() }));
 }
 
 // Growth trends for the /analytics page. The owner's COMPLETED sessions only, and only entries that have at

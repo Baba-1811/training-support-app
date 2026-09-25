@@ -1,64 +1,45 @@
+import Image from "next/image";
+import Link from "next/link";
 import { requireUser } from "@/lib/auth/require-user";
-import { prisma } from "@/lib/prisma";
+import { listCompletedWorkouts, listExerciseTrends, listInProgressWorkouts } from "@/lib/workouts/queries";
+import { buildGrowthSnapshot } from "@/lib/workouts/analytics-trend";
+import { splitInProgress } from "@/lib/workouts/in-progress";
 import { StartWorkoutForm } from "@/components/workouts/start-workout-form";
+import { InProgressWorkoutCard } from "@/components/workouts/in-progress-workout-card";
+import { RecentWorkoutsSection } from "@/components/workouts/recent-workouts-section";
+import { GrowthSnapshot } from "@/components/home/growth-snapshot";
+
+const RECENT_WORKOUT_COUNT = 3;
 
 export default async function Home() {
   await requireUser();
-  const exercises = await prisma.exercise.findMany({
-    where: {
-      isActive: true,
-    },
-    orderBy: {
-      name: "asc",
-    },
-    include: {
-      exerciseMuscles: {
-        include: {
-          muscle: true,
-        },
-      },
-    },
-  });
-
-  return (
-    <main className="min-h-screen p-6">
-      <h1 className="mb-6 text-2xl font-bold">
-        Training Support
-      </h1>
-
-      <StartWorkoutForm />
-
-      <h2 className="mb-4 text-xl font-semibold">
-        Exercise List
-      </h2>
-
-      <div className="space-y-4">
-        {exercises.map((exercise) => (
-          <div
-            key={exercise.id}
-            className="rounded-lg border p-4"
-          >
-            <h3 className="font-semibold">
-              {exercise.name}
-            </h3>
-
-            <p className="text-sm">
-              {exercise.description}
-            </p>
-
-            <div className="mt-2 text-sm">
-              {exercise.exerciseMuscles.map((relation) => (
-                <span
-                  key={relation.muscleId}
-                  className="mr-2"
-                >
-                  {relation.muscle.name} ({relation.role})
-                </span>
-              ))}
-            </div>
-          </div>
-        ))}
+  // Three owner-scoped queries, none per-row: recent workouts (bounded), the Analytics trend data, unfinished workouts.
+  const [recent, trends, inProgress] = await Promise.all([
+    listCompletedWorkouts(RECENT_WORKOUT_COUNT), listExerciseTrends(), listInProgressWorkouts(),
+  ]);
+  const { current, others } = splitInProgress(inProgress);
+  return <main className="mx-auto w-full max-w-[480px] space-y-6 px-4 py-5 text-slate-900">
+    <header className="flex items-center gap-3">
+      <Image src="/images/brand/app-icon.jpg" alt="" width={44} height={44} priority className="h-11 w-11 shrink-0 rounded-xl" />
+      <div className="min-w-0">
+        <h1 className="text-xl font-bold leading-tight">LoopLift</h1>
+        <p className="text-xs leading-snug text-slate-500">なんとなくの筋トレを、<wbr />成長が見えるトレーニングへ。</p>
       </div>
-    </main>
-  );
+    </header>
+
+    {/* One primary action: resume the unfinished workout if there is one, otherwise start a new one. */}
+    <section aria-label="トレーニング" className="space-y-3">
+      {current
+        ? <>
+          <InProgressWorkoutCard workout={current} />
+          {others.length > 0 && <Link href="/workouts" className="block text-center text-xs text-slate-500 underline underline-offset-2">
+            ほかにも途中のトレーニングが{others.length}件あります
+          </Link>}
+        </>
+        : <StartWorkoutForm compact />}
+    </section>
+
+    <RecentWorkoutsSection workouts={recent} historyLinkLabel="履歴をすべて見る" />
+    <GrowthSnapshot snapshot={buildGrowthSnapshot(trends)} />
+  </main>;
 }
