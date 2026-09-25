@@ -1,23 +1,13 @@
-import Link from "next/link";
 import { requireUser } from "@/lib/auth/require-user";
-import { LogoutButton } from "@/components/auth/logout-button";
+import { BottomNav } from "@/components/layout/bottom-nav";
 
 export const dynamic = "force-dynamic";
 
+// LoopLift app shell: page content (each page centers itself in a 480px column) above a fixed bottom navigation.
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
-  const user = await requireUser();
+  await requireUser();
   return <div className="min-h-dvh bg-slate-50 text-slate-900">
-    <header className="flex flex-wrap items-center justify-between gap-3 border-b bg-white px-5 py-3">
-      <nav className="flex items-center gap-4 text-sm font-medium text-slate-600">
-        <Link href="/" className="active:text-orange-600">記録</Link>
-        <Link href="/history" className="active:text-orange-600">履歴</Link>
-        <Link href="/analytics" className="active:text-orange-600">分析</Link>
-      </nav>
-      <div className="flex items-center gap-3">
-        <span className="break-all text-sm">{user.name}さん</span>
-        <LogoutButton />
-      </div>
-    </header>
-    {children}
+    <div className="pb-[calc(5rem+env(safe-area-inset-bottom))]">{children}</div>
+    <BottomNav />
   </div>;
 }
