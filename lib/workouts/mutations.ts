@@ -24,6 +24,24 @@ export async function createWorkout(input: z.output<typeof schemas.startWorkoutS
   });
 }
 
+// Exercise Library "この種目でトレーニング" when nothing is in progress: the session and its first exercise are created
+// in one transaction (one nested create), so a failure can never leave an empty session behind. The owner comes
+// from requireUser(), never from the caller; only an active exercise is accepted.
+export async function createWorkoutWithExercise(input: z.output<typeof schemas.startWorkoutWithExerciseSchema>) {
+  const user = await requireUser();
+  return prisma.$transaction(async (tx) => {
+    const exercise = await tx.exercise.findFirst({ where: { id: input.exerciseId, isActive: true }, select: { id: true } });
+    if (!exercise) throw new WorkoutError("NOT_FOUND");
+    return tx.workoutSession.create({
+      data: {
+        userId: user.id, startedAt: new Date(), status: "IN_PROGRESS",
+        exercises: { create: { exerciseId: exercise.id, exerciseOrder: 1 } },
+      },
+      select: { id: true },
+    });
+  });
+}
+
 export async function mutateWorkout(command: Command): Promise<string> {
   const user = await requireUser();
   return prisma.$transaction(async (tx) => {

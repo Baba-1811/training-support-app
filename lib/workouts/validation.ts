@@ -15,6 +15,7 @@ const setValues = {
   setType: z.enum(["WORKING", "WARMUP"]),
 };
 export const startWorkoutSchema = z.strictObject({ title });
+export const startWorkoutWithExerciseSchema = z.strictObject({ exerciseId: id });
 export const updateWorkoutTitleSchema = z.strictObject({ sessionId: id, title });
 export const addExerciseSchema = z.strictObject({ sessionId: id, exerciseId: id });
 export const deleteWorkoutExerciseSchema = z.strictObject({ workoutExerciseId: id });
