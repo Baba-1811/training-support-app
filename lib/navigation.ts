@@ -10,11 +10,11 @@ export const NAV_TABS: ReadonlyArray<{ id: NavTabId; href: string; label: string
 
 const under = (pathname: string, base: string) => pathname === base || pathname.startsWith(`${base}/`);
 
-// Workouts, analytics and history are one "training" area for the user; /analytics and /history stay reachable
-// by URL but no longer have tabs of their own.
+// Workouts, the exercise library, analytics and history are one "training" area for the user; /analytics and
+// /history stay reachable by URL but no longer have tabs of their own.
 export function activeNavTab(pathname: string): NavTabId | null {
   if (pathname === "/") return "home";
-  if (under(pathname, "/workouts") || under(pathname, "/analytics") || under(pathname, "/history")) return "training";
+  if (under(pathname, "/workouts") || under(pathname, "/exercises") || under(pathname, "/analytics") || under(pathname, "/history")) return "training";
   if (under(pathname, "/nutrition")) return "nutrition";
   if (under(pathname, "/settings")) return "settings";
   return null;

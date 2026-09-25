@@ -3,6 +3,7 @@ import { listCompletedWorkouts, listExerciseTrends, listInProgressWorkouts } fro
 import { splitInProgress } from "@/lib/workouts/in-progress";
 import { StartWorkoutForm } from "@/components/workouts/start-workout-form";
 import { InProgressWorkoutCard } from "@/components/workouts/in-progress-workout-card";
+import { ExerciseLibraryLink } from "@/components/workouts/exercise-library-link";
 import { AnalyticsPanel } from "@/components/analytics/analytics-panel";
 
 const RECENT_WORKOUT_COUNT = 3;
@@ -34,6 +35,7 @@ export default async function TrainingPage() {
         </>
         : <StartWorkoutForm />}
     </section>
+    <section aria-label="種目ライブラリ" className="mt-4"><ExerciseLibraryLink /></section>
     <section aria-labelledby="growth-heading" className="mt-6">
       <h2 id="growth-heading" className="text-base font-bold">成長</h2>
       <AnalyticsPanel trends={trends} recent={recent} nowIso={new Date().toISOString()} />

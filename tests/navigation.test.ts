@@ -26,11 +26,18 @@ describe("bottom navigation tabs", () => {
   it("keeps /analytics, /history and the workout detail routes (deep links) alive", () => {
     for (const route of ["/analytics", "/history", "/workouts/[id]"]) expect(existsSync(page(route)), route).toBe(true);
   });
+
+  it("has the Exercise Library routes under the training area, with no tab of their own", () => {
+    for (const route of ["/exercises", "/exercises/[id]"]) expect(existsSync(page(route)), route).toBe(true);
+    expect(NAV_TABS.map((tab) => tab.href)).not.toContain("/exercises");
+  });
 });
 
 describe("activeNavTab", () => {
-  it.each(["/workouts", "/workouts/33333333-3333-4333-8333-333333333333", "/analytics", "/history"])(
-    "%s highlights トレーニング", (pathname) => expect(activeNavTab(pathname)).toBe("training"));
+  it.each([
+    "/workouts", "/workouts/33333333-3333-4333-8333-333333333333", "/analytics", "/history",
+    "/exercises", "/exercises/33333333-3333-4333-8333-333333333333",
+  ])("%s highlights トレーニング", (pathname) => expect(activeNavTab(pathname)).toBe("training"));
 
   it.each([["/", "home"], ["/nutrition", "nutrition"], ["/settings", "settings"]] as const)(
     "%s highlights %s", (pathname, tab) => expect(activeNavTab(pathname)).toBe(tab));
@@ -38,6 +45,7 @@ describe("activeNavTab", () => {
   it("does not match a route that merely shares a prefix", () => {
     expect(activeNavTab("/workoutsx")).toBeNull();
     expect(activeNavTab("/historyfoo")).toBeNull();
+    expect(activeNavTab("/exercisesx")).toBeNull();
     expect(activeNavTab("/login")).toBeNull();
   });
 });
