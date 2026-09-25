@@ -38,6 +38,7 @@ async function main() {
     { name: "Hamstrings", bodyRegion: "Lower Body" },
     { name: "Glutes", bodyRegion: "Lower Body" },
     { name: "Calves", bodyRegion: "Lower Body" },
+    { name: "Abs", bodyRegion: "Core" },
   ];
 
   for (const muscle of muscles) {
@@ -120,6 +121,22 @@ async function main() {
       tips: "反動を使わず、可動域を確保する。",
       equipmentType: EquipmentType.BODYWEIGHT,
     },
+    {
+      name: "Leg Press",
+      description: "マシンを使って太ももやお尻を鍛えるレッグ種目。",
+      instructions:
+        "シートに深く座って足をプレートに置き、膝を曲げてゆっくり下ろしてから押し戻す。",
+      tips: "膝を完全に伸ばし切らず、腰がシートから浮かないようにする。",
+      equipmentType: EquipmentType.MACHINE,
+    },
+    {
+      name: "Crunch",
+      description: "腹筋を鍛える基本的な自重種目。",
+      instructions:
+        "仰向けで膝を曲げ、肩甲骨が床から離れるまで上体を丸めて起こし、ゆっくり戻す。",
+      tips: "首を引っ張らず、反動を使わずにお腹の収縮を意識する。",
+      equipmentType: EquipmentType.BODYWEIGHT,
+    },
   ];
 
   for (const exercise of exercises) {
@@ -162,6 +179,12 @@ async function main() {
     ["Triceps Pushdown", "Triceps", MuscleRole.PRIMARY],
 
     ["Calf Raise", "Calves", MuscleRole.PRIMARY],
+
+    ["Leg Press", "Quadriceps", MuscleRole.PRIMARY],
+    ["Leg Press", "Glutes", MuscleRole.PRIMARY],
+    ["Leg Press", "Hamstrings", MuscleRole.SECONDARY],
+
+    ["Crunch", "Abs", MuscleRole.PRIMARY],
   ] as const;
 
   for (const [exerciseName, muscleName, role] of relations) {
