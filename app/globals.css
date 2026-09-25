@@ -1,8 +1,10 @@
 @import "tailwindcss";
 
+/* LoopLift brand. Secondary is Tailwind's sky-500; background/text/border match slate-50/900/500/200. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  color-scheme: light;
 }
 
 @theme inline {
@@ -12,11 +14,12 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@theme {
+  --color-primary: #ff6b00;
+  --color-secondary: #0ea5e9;
+  /* The app already styles CTAs with orange-500/600; pointing them at the brand color re-themes every screen at once. */
+  --color-orange-500: #ff6b00;
+  --color-orange-600: #e05f00;
 }
 
 body {

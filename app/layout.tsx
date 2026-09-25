@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -13,9 +13,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Training Support",
-  description: "トレーニングの記録と継続をサポート",
+  title: "LoopLift",
+  description: "なんとなくの筋トレを、成長が見えるトレーニングへ。",
+  icons: { icon: "/images/brand/app-icon.jpg" },
 };
+
+// viewport-fit=cover makes env(safe-area-inset-bottom) available to the bottom navigation on notched phones.
+export const viewport: Viewport = { viewportFit: "cover" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
