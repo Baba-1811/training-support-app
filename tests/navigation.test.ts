@@ -27,6 +27,11 @@ describe("bottom navigation tabs", () => {
     for (const route of ["/analytics", "/history", "/workouts/[id]"]) expect(existsSync(page(route)), route).toBe(true);
   });
 
+  it("has /condition (Home-origin Daily Condition), with no tab of its own", () => {
+    expect(existsSync(page("/condition")), "/condition").toBe(true);
+    expect(NAV_TABS.map((tab) => tab.href)).not.toContain("/condition");
+  });
+
   it("has the Exercise Library routes under the training area, with no tab of their own", () => {
     for (const route of ["/exercises", "/exercises/[id]"]) expect(existsSync(page(route)), route).toBe(true);
     expect(NAV_TABS.map((tab) => tab.href)).not.toContain("/exercises");
@@ -42,10 +47,15 @@ describe("activeNavTab", () => {
   it.each([["/", "home"], ["/nutrition", "nutrition"], ["/settings", "settings"]] as const)(
     "%s highlights %s", (pathname, tab) => expect(activeNavTab(pathname)).toBe(tab));
 
+  it("/condition highlights ホーム (a Home-origin flow, not a tab of its own)", () => {
+    expect(activeNavTab("/condition")).toBe("home");
+  });
+
   it("does not match a route that merely shares a prefix", () => {
     expect(activeNavTab("/workoutsx")).toBeNull();
     expect(activeNavTab("/historyfoo")).toBeNull();
     expect(activeNavTab("/exercisesx")).toBeNull();
+    expect(activeNavTab("/conditionx")).toBeNull();
     expect(activeNavTab("/login")).toBeNull();
   });
 });

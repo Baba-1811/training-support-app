@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  EXERCISE_CATEGORIES, exerciseCategories, filterByCategory, muscleCategory, parseCategoryFilter,
+  CATEGORY_MUSCLES, EXERCISE_CATEGORIES, MUSCLE_CATEGORY, SORENESS_CATEGORIES,
+  categoryMuscles, exerciseCategories, filterByCategory, muscleCategory, parseCategoryFilter,
 } from "@/lib/exercises/categories";
 import { primaryMusclesOf, seededExercises, seededMuscles } from "./seed-data";
 
@@ -68,6 +69,30 @@ describe("filterByCategory", () => {
     expect(result).not.toBe(list);
   });
   it("a category returns only its own", () => expect(filterByCategory(list, "abs")).toEqual([list[1]]));
+});
+
+describe("SORENESS_CATEGORIES (Daily Condition)", () => {
+  it("is the six real categories, in display order, without all", () => {
+    expect(SORENESS_CATEGORIES).toEqual(["chest", "back", "shoulders", "arms", "legs", "abs"]);
+  });
+});
+
+describe("categoryMuscles / CATEGORY_MUSCLES (Daily Condition soreness expansion)", () => {
+  it("expands a category into exactly the Muscle names Exercise Library maps to it", () => {
+    expect(categoryMuscles("legs")).toEqual(["Quadriceps", "Hamstrings", "Glutes", "Calves"]);
+    expect(categoryMuscles("shoulders")).toEqual(["Front Deltoid", "Side Deltoid", "Rear Deltoid"]);
+    expect(categoryMuscles("chest")).toEqual(["Chest"]);
+  });
+
+  it("is the exact inverse of MUSCLE_CATEGORY (single source of truth, no drift)", () => {
+    for (const [muscle, slug] of Object.entries(MUSCLE_CATEGORY)) expect(CATEGORY_MUSCLES[slug]).toContain(muscle);
+    const total = Object.values(CATEGORY_MUSCLES).reduce((sum, names) => sum + names.length, 0);
+    expect(total).toBe(Object.keys(MUSCLE_CATEGORY).length);
+  });
+
+  it("gives every soreness category at least one Muscle", () => {
+    for (const slug of SORENESS_CATEGORIES) expect(categoryMuscles(slug).length, slug).toBeGreaterThan(0);
+  });
 });
 
 describe("parseCategoryFilter (?muscle=)", () => {
