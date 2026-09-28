@@ -4,18 +4,21 @@ import { requireUser } from "@/lib/auth/require-user";
 import { listCompletedWorkouts, listExerciseTrends, listInProgressWorkouts } from "@/lib/workouts/queries";
 import { buildGrowthSnapshot } from "@/lib/workouts/analytics-trend";
 import { splitInProgress } from "@/lib/workouts/in-progress";
+import { getTodayCondition } from "@/lib/conditions/queries";
 import { StartWorkoutForm } from "@/components/workouts/start-workout-form";
 import { InProgressWorkoutCard } from "@/components/workouts/in-progress-workout-card";
 import { RecentWorkoutsSection } from "@/components/workouts/recent-workouts-section";
 import { GrowthSnapshot } from "@/components/home/growth-snapshot";
+import { ConditionCard } from "@/components/home/condition-card";
 
 const RECENT_WORKOUT_COUNT = 3;
 
 export default async function Home() {
   await requireUser();
-  // Three owner-scoped queries, none per-row: recent workouts (bounded), the Analytics trend data, unfinished workouts.
-  const [recent, trends, inProgress] = await Promise.all([
-    listCompletedWorkouts(RECENT_WORKOUT_COUNT), listExerciseTrends(), listInProgressWorkouts(),
+  // Four owner-scoped queries, none per-row: recent workouts (bounded), the Analytics trend data, unfinished
+  // workouts, today's Daily Condition (its own MuscleCondition rows ride along in one nested select).
+  const [recent, trends, inProgress, condition] = await Promise.all([
+    listCompletedWorkouts(RECENT_WORKOUT_COUNT), listExerciseTrends(), listInProgressWorkouts(), getTodayCondition(),
   ]);
   const { current, others } = splitInProgress(inProgress);
   return <main className="mx-auto w-full max-w-[480px] space-y-6 px-4 py-5 text-slate-900">
@@ -26,6 +29,9 @@ export default async function Home() {
         <p className="text-xs leading-snug text-slate-500">なんとなくの筋トレを、<wbr />成長が見えるトレーニングへ。</p>
       </div>
     </header>
+
+    {/* Condition, ahead of the Workout section: the future Home order is Condition -> Recommendation -> Workout. */}
+    <ConditionCard condition={condition} />
 
     {/* One primary action: resume the unfinished workout if there is one, otherwise start a new one. */}
     <section aria-label="トレーニング" className="space-y-3">
