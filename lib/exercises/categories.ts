@@ -48,6 +48,23 @@ export function muscleCategory(muscleName: string): CategorySlug | null {
   return MUSCLE_CATEGORY[muscleName] ?? null;
 }
 
+// The inverse of MUSCLE_CATEGORY, derived once so a UI category can be expanded into its Muscle names (Daily
+// Condition soreness) without a second hand-written mapping that could drift from this one.
+export const CATEGORY_MUSCLES: Readonly<Record<CategorySlug, readonly string[]>> = (() => {
+  const map = {} as Record<CategorySlug, string[]>;
+  for (const [muscle, slug] of Object.entries(MUSCLE_CATEGORY)) (map[slug] ??= []).push(muscle);
+  return map;
+})();
+
+export function categoryMuscles(slug: CategorySlug): readonly string[] {
+  return CATEGORY_MUSCLES[slug] ?? [];
+}
+
+// The six soreness-input categories, in display order (excludes "all", which only applies to the exercise filter).
+export const SORENESS_CATEGORIES: readonly CategorySlug[] = EXERCISE_CATEGORIES
+  .map((category) => category.slug)
+  .filter((slug): slug is CategorySlug => slug !== "all");
+
 // Only PRIMARY muscles decide the category. SECONDARY never does (Bench Press is 胸 only, not 腕 / 肩).
 // An exercise whose PRIMARY muscles sit in several categories belongs to each of them.
 export function exerciseCategories(primaryMuscleNames: readonly string[]): CategorySlug[] {
