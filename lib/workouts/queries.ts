@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth/require-user";
 import { buildWorkoutAnalytics } from "./analytics";
 import { buildExerciseTrends } from "./analytics-trend";
 import type {
-  ExerciseAnalyticsDTO, ExerciseHistoryRecord, ExerciseTrend, PreviousExercisePerformanceDTO, WorkoutDTO, WorkoutHistorySummaryDTO,
+  ExerciseAnalyticsDTO, ExerciseHistoryRecord, ExerciseTrend, PreviousExercisePerformanceDTO, PreviousSetDTO, WorkoutDTO, WorkoutHistorySummaryDTO,
 } from "./types";
 
 export async function getWorkout(id: string): Promise<WorkoutDTO | null> {
@@ -87,6 +87,83 @@ export async function getPreviousExercisePerformance(
     return [exerciseId, value] as const;
   }));
   return Object.fromEntries(entries);
+}
+
+type LatestSessionRow = { exerciseId: string; startedAt: Date };
+type LatestSetRow = { exerciseId: string; weightKg: string; reps: number };
+
+// Pure: assembles the final Record from (a) each Exercise's latest COMPLETED session (one row per Exercise) and
+// (b) every completed WORKING set recorded for that Exercise within that exact session — which can come from more
+// than one WorkoutExercise row of the same Exercise in that session (see getLatestExercisePerformance's comment).
+// Exported so this shaping is unit-testable without a database: row order, several Exercises, several sessions,
+// duplicate same-session Exercises and "no history" are all plain-data concerns, not query concerns.
+export function reduceLatestExercisePerformance(
+  latestSessions: readonly LatestSessionRow[], setRows: readonly LatestSetRow[],
+): Record<string, PreviousExercisePerformanceDTO> {
+  const setsByExercise = new Map<string, PreviousSetDTO[]>();
+  for (const row of setRows) {
+    const sets = setsByExercise.get(row.exerciseId) ?? [];
+    sets.push({ weightKg: row.weightKg, reps: row.reps });
+    setsByExercise.set(row.exerciseId, sets);
+  }
+  const result: Record<string, PreviousExercisePerformanceDTO> = {};
+  for (const { exerciseId, startedAt } of latestSessions) {
+    result[exerciseId] = { startedAt: startedAt.toISOString(), sets: setsByExercise.get(exerciseId) ?? [] };
+  }
+  return result;
+}
+
+// Most recent COMPLETED performance of every given Exercise, bulk-fetched in a FIXED number of queries rather
+// than one per Exercise — used by Recommendation (Phase 5), which needs "everyone's last performance" at once
+// and must not have its query count grow as the Exercise catalog grows (unlike getPreviousExercisePerformance
+// above, which is deliberately scoped to a single in-progress workout and stays per-exercise for that reason).
+// An Exercise with no completed history is simply absent from the returned Record: the Recommendation engine
+// treats "absent" as "no history", so no null/placeholder entry is created for it.
+//
+// Two queries, not one: Prisma's `distinct` can pick exactly one row per Exercise (a "latest per group" query,
+// ordered by workoutSession.startedAt desc — no unbounded fetch of full history, and no arbitrary day cutoff,
+// since an old previous performance is still meaningful here unlike lastTrainedAt's 30-day window) but cannot
+// also gather sibling rows for the same key. The schema allows the same Exercise to appear as more than one
+// WorkoutExercise within a single Session (no unique constraint on (workoutSessionId, exerciseId), only on
+// (workoutSessionId, exerciseOrder); the existing addExercise mutation does not prevent it either).
+// lib/workouts/analytics.ts#summarizeSessions already treats that case as "one workout's performance" ("a session
+// may hold the same exercise more than once"); this function follows that same precedent by merging every
+// qualifying set from the session, rather than arbitrarily keeping only one of the duplicate rows the way
+// getPreviousExercisePerformance's single findFirst would.
+export async function getLatestExercisePerformance(exerciseIds: string[]): Promise<Record<string, PreviousExercisePerformanceDTO>> {
+  const user = await requireUser();
+  const uniqueIds = [...new Set(exerciseIds)];
+  if (uniqueIds.length === 0) return {};
+
+  // Query 1: which session is "latest" for each Exercise (fixed cost regardless of catalog size).
+  const latestSessionRows = await prisma.workoutExercise.findMany({
+    where: { exerciseId: { in: uniqueIds }, workoutSession: { userId: user.id, status: "COMPLETED" } },
+    distinct: ["exerciseId"],
+    orderBy: { workoutSession: { startedAt: "desc" } },
+    select: { exerciseId: true, workoutSessionId: true, workoutSession: { select: { startedAt: true } } },
+  });
+  if (latestSessionRows.length === 0) return {};
+
+  // Query 2: every completed WORKING set for exactly those (Exercise, session) pairs — an exact-pair OR, not a
+  // broad "any of these exercises in any of these sessions" filter, so an Exercise never picks up sets from a
+  // session that happens to be some OTHER Exercise's latest, not its own. Still owner/COMPLETED-scoped again here
+  // rather than trusting query 1's result alone.
+  const setRows = await prisma.workoutExercise.findMany({
+    where: {
+      workoutSession: { userId: user.id, status: "COMPLETED" },
+      OR: latestSessionRows.map((row) => ({ exerciseId: row.exerciseId, workoutSessionId: row.workoutSessionId })),
+    },
+    orderBy: { exerciseOrder: "asc" }, // deterministic order when the same Exercise has two rows in one session
+    select: {
+      exerciseId: true,
+      sets: { where: { completed: true, setType: "WORKING" }, orderBy: { setNumber: "asc" }, select: { weightKg: true, reps: true } },
+    },
+  });
+
+  const latestSessions: LatestSessionRow[] = latestSessionRows.map((row) => ({ exerciseId: row.exerciseId, startedAt: row.workoutSession.startedAt }));
+  const flatSetRows: LatestSetRow[] = setRows.flatMap((row) =>
+    row.sets.map((set) => ({ exerciseId: row.exerciseId, weightKg: set.weightKg.toString(), reps: set.reps })));
+  return reduceLatestExercisePerformance(latestSessions, flatSetRows);
 }
 
 // Confirmed analytics for a COMPLETED workout. `workout` must come from getWorkout (ownership-checked);
