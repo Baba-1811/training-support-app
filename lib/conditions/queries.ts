@@ -2,8 +2,8 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/require-user";
 import { jstDateOnly } from "@/lib/date/jst";
-import { restoreSorenessByCategory } from "./dto";
-import type { DailyConditionDTO } from "./types";
+import { restoreSorenessByCategory, toRecommendationInput } from "./dto";
+import type { ConditionRecommendationInputDTO, DailyConditionDTO } from "./types";
 
 // Today's condition (JST calendar day), or null if not entered yet. ONE query: MuscleCondition + Muscle ride
 // along in a nested select, so there is no per-muscle follow-up query (no N+1). findUnique on
@@ -30,4 +30,27 @@ export async function getTodayCondition(): Promise<DailyConditionDTO | null> {
       condition.muscleConditions.map((row) => ({ muscleName: row.muscle.name, sorenessLevel: row.sorenessLevel })),
     ),
   };
+}
+
+// Same query as getTodayCondition(), shaped for the Recommendation engine (Phase 5) instead of the UI: individual
+// Muscle names via toRecommendationInput(), not the UI's category grouping. null = no Condition entered today —
+// distinct from the engine's own { kind: "REST" } result, which means a Condition exists but rest is recommended.
+export async function getTodayConditionForRecommendation(): Promise<ConditionRecommendationInputDTO | null> {
+  const user = await requireUser();
+  const conditionDate = jstDateOnly();
+  const condition = await prisma.dailyCondition.findUnique({
+    where: { userId_conditionDate: { userId: user.id, conditionDate } },
+    select: {
+      conditionDate: true, sleepHours: true, fatigueLevel: true, availableMinutes: true,
+      muscleConditions: { select: { sorenessLevel: true, muscle: { select: { name: true } } } },
+    },
+  });
+  if (!condition) return null;
+  return toRecommendationInput({
+    conditionDate: condition.conditionDate.toISOString().slice(0, 10),
+    sleepHours: condition.sleepHours?.toString() ?? null,
+    fatigueLevel: condition.fatigueLevel,
+    availableMinutes: condition.availableMinutes,
+    muscleConditions: condition.muscleConditions.map((row) => ({ muscleName: row.muscle.name, sorenessLevel: row.sorenessLevel })),
+  });
 }
