@@ -1,6 +1,169 @@
-# Training Support
+# LoopLift
 
-Next.js 16 App Router / Prisma 7 / PostgreSQL / Supabase Auth のトレーニング支援アプリです。
+> なんとなくの筋トレを、成長が見えるトレーニングへ。
+
+LoopLiftは、筋トレ初心者〜初中級者を対象としたトレーニング支援Webアプリです。
+「今日は何をすればいいか」「どの重量・回数で行えばいいか」「自分が成長しているか」を、
+記録と分析にもとづいて分かりやすくすることを目指しています。
+
+Next.js App Router / TypeScript / Prisma / PostgreSQL（Supabase）/ Supabase Auth で構築しています。
+
+## Product Concept
+
+LoopLiftは、以下のループを軸に設計しています。
+
+```
+Condition → Recommendation → Workout → Analytics → 次回のCondition/Recommendation
+```
+
+- **Condition**: 睡眠・疲労・可用時間・部位別の筋肉痛など、その日の状態を記録する
+- **Recommendation**: Conditionと過去の記録から、今日やるべきトレーニングを判断する
+- **Workout**: 実際にトレーニングを記録する（重量・回数・RIRなど）
+- **Analytics**: 記録から推定1RMやVolumeの推移を可視化し、成長を確認する
+
+この循環（**Loop**）を繰り返しながら、トレーニング（**Lift**）を積み重ねていく、という意味で
+「LoopLift」と名付けています。
+
+> **現在の開発状況**: 上記ループのうち、Condition・Workout・AnalyticsはUIとして完成していますが、
+> RecommendationはドメインロジックとContext構築クエリまでが実装済みで、**HomeへのUI表示はまだ未接続**です。
+> 詳細は [Recommendation Engine](#recommendation-engine) を参照してください。
+
+## 主な機能
+
+### Workout Logging
+
+- トレーニングの開始（種目を選んで開始、または種目ページから開始）
+- 種目の追加・削除
+- セットごとの重量・回数・RIRの入力
+- WORKING / WARMUPのセット種別切り替え
+- セットの確定・更新・削除
+- トレーニングの終了（完了）
+- 進行中のトレーニングでは、種目ごとに前回記録（重量×回数）と暫定の推定1RM/Volumeを表示
+
+### Workout History
+
+- 完了したトレーニングの一覧
+- トレーニング詳細（種目・セットの内訳）
+- 完了時は種目ごとに前回比較・自己ベスト（推定1RM基準）の表示
+
+### Analytics
+
+- 推定1RM（e1RM）とVolumeの算出・推移表示
+- 種目ごとに1か月（1M）/ 3か月（3M）/ 全期間（ALL）で期間を切り替え
+- Rechartsによる折れ線グラフ表示
+- Homeには直近種目の簡易な成長スナップショットを表示
+
+推定1RM（e1RM）は以下の式で算出しています（`lib/workouts/calculations.ts`）。
+
+```
+e1RM = weightKg × (1 + reps / 30)
+```
+
+### Exercise Library
+
+- 部位別（胸・背中・肩・腕・脚・腹筋）の種目一覧・絞り込み
+- 種目詳細ページ（説明・やり方・フォームのポイント）
+- PRIMARY / SECONDARY筋の表示
+- 種目ページから新規トレーニングを開始、または進行中のトレーニングへ追加
+
+### Daily Condition
+
+- 睡眠時間・疲労度・トレーニング可能時間の入力
+- 部位別（筋肉単位）の筋肉痛レベルの入力
+- Home導線: Home → Condition → （将来的に）Recommendation → Workout
+
+### Recommendation Engine
+
+Daily Conditionの入力（筋肉痛・睡眠・疲労・可用時間）、トレーニングの実施間隔（recency）、
+種目ごとの直近パフォーマンスなどを`RecommendationContext`としてまとめ、
+**decision論理をDB/UIから完全に分離したpure functionの推薦エンジン**が、
+その日のWORKOUT（推奨メニュー）またはREST（休養）を決定します（`lib/recommendations/engine.ts`）。
+
+現在実装済みの範囲：
+
+- ドメインルール（`lib/recommendations/rules.ts`）: 筋肉痛の除外/減点、トレーニング間隔スコア、
+  疲労時の負荷軽減判定、可用時間ベースの種目数上限
+- 推薦エンジン本体（`lib/recommendations/engine.ts`）: カテゴリ評価・スコアリング・タイブレーク、
+  種目のランキングと重複なしの選定、推薦理由テキストの生成
+- 推薦理由の文章生成（`lib/recommendations/reasons.ts`）
+- ターゲット重量・回数・セット数・レスト秒数の算出（`lib/recommendations/target.ts`）
+- DBから`RecommendationContext`を構築し、エンジンを呼び出すクエリ層（`lib/recommendations/queries.ts`）
+
+一方で、以下は**まだ未実装**です。
+
+- HomeへのRecommendation UIの表示
+- `WorkoutPlan`としての推薦結果の永続化（Prismaモデル自体は存在しますが、書き込み処理は未実装）
+- Recommendationからそのままトレーニングを開始する導線
+
+現時点では、Recommendationは「バックエンドのロジックとして実装済みだが、ユーザーが実際に画面上で
+使える機能ではない」という状態です。
+
+## Recommendation Design
+
+Recommendation Engineは、以下の方針で設計しています。
+
+- **deterministic**: 同じ入力（`RecommendationContext`）に対して常に同じ結果を返す純粋関数として実装
+- **no LLM**: すべてのロジックとテキスト生成（推薦理由）はテンプレートとルールベースで構成し、LLMを利用しない
+- **DB非依存 / UI非依存**: `lib/recommendations/engine.ts`はPrismaもReactも一切importせず、
+  DBアクセスは`lib/recommendations/queries.ts`側でContextに変換してから渡す構成
+- **評価要素**: 筋肉痛（PRIMARY/SECONDARY）、トレーニング間隔（recency）、直近の種目パフォーマンス、
+  睡眠・疲労による負荷軽減、可用時間による種目数の上限
+- **deterministic tie-breaking**: スコアが同じ場合もカテゴリの優先順位や種目名で一貫した並び順を保証
+- **REST fallback**: 有効なカテゴリが1つも無い場合はRESTを提案し、無理に種目を割り当てない
+
+DB/UIから分離したpure functionとして設計することで、テスト容易性・再現性を確保しており、
+`tests/recommendations/`配下でDBやUIを介さずにエンジン単体を検証できます。
+
+## Architecture
+
+```mermaid
+flowchart LR
+    UI[Next.js UI\nServer Components / Client Components]
+    SA[Server Actions]
+    AUTH[Supabase Auth]
+    REC[Recommendation Engine\npure function]
+    PRISMA[Prisma]
+    DB[(PostgreSQL / Supabase)]
+
+    UI --> SA
+    SA --> AUTH
+    SA --> PRISMA
+    SA -.->|RecommendationContext構築のみ、UIには未接続| REC
+    PRISMA --> DB
+```
+
+- **UI**: Next.js App Router。データ取得はServer Componentから直接クエリ層を呼び出し、
+  更新系は`app/**/actions.ts`のServer Actionを経由
+- **Auth**: `@supabase/ssr`によるSupabase Auth（Email/password、PKCEフローでのメール確認）。
+  `proxy.ts`でCookieの検証・更新を行い、`lib/auth/require-user.ts`で各ページ・Server Actionから
+  再検証したユーザーのみがデータへアクセス
+- **データアクセス**: Prisma Client（`@prisma/client` + `pg`）経由でPostgreSQL（Supabase）に接続。
+  個人データはすべてユーザーIDをownerとした条件でスコープ
+- **Recommendation Engine**: `lib/recommendations/`配下に独立したドメインロジックとして実装。
+  現時点ではクエリ層からContextを構築できる状態までで、UIへの接続はまだ行っていない
+
+## 技術スタック
+
+- **フレームワーク**: Next.js 16 (App Router) / React 19 / TypeScript
+- **DB / ORM**: PostgreSQL（Supabase） / Prisma 7
+- **認証**: Supabase Auth（`@supabase/ssr`）
+- **グラフ描画**: Recharts
+- **バリデーション**: Zod
+- **テスト**: Vitest
+
+## テスト構成
+
+`tests/`配下にドメインロジック・クエリ・Server Actionを中心としたテストがあります（Vitest）。
+
+- `tests/auth/`: 入力検証、Cookie、PKCEのメール確認フロー、プロフィール同期
+- `tests/conditions/`: Daily Conditionの検証・DTO・クエリ・Server Action
+- `tests/exercises/`: 種目ライブラリのカテゴリ分け・ラベル・クエリ
+- `tests/recommendations/`: Recommendation Engine本体・ルール・ターゲット算出・推薦理由・クエリ
+- `tests/workouts/`: Workoutのバリデーション・Server Action・分析（e1RM/Volume/トレンド）・履歴・Home表示
+- `tests/navigation.test.ts`, `tests/date/`: ナビゲーションのタブ判定、JST日付処理
+
+Prisma/Supabaseはモックしてテストするものと、実クライアントを使うもの（`tests/auth/pkce.test.ts`）が
+混在しています。
 
 ## ローカル設定
 
