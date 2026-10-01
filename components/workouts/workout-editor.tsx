@@ -7,6 +7,7 @@ import { summarizePerformance } from "@/lib/workouts/analytics";
 import { formatE1rm, formatE1rmDelta, formatVolume, formatVolumeDelta } from "@/lib/workouts/analytics-format";
 import type { ActionResult, ExerciseAnalyticsDTO, ExerciseDTO, PreviousExercisePerformanceDTO, WorkoutDTO, SetDTO } from "@/lib/workouts/types";
 import { SetRow, SetRowHeader, type Row } from "./set-row";
+import { RecommendationTargetCard } from "./recommendation-target-card";
 
 const savedRow = (set: SetDTO): Row => ({ key: `set-${set.id}`, id: set.id, setNumber: set.setNumber,
   weightKg: set.weightKg, reps: String(set.reps), rir: set.rir ?? "", setType: set.setType });
@@ -197,6 +198,7 @@ export function WorkoutEditor({ initialWorkout, availableExercises, previousPerf
             if (window.confirm(`${exercise.name}と配下の記録済みセットをすべて削除します。よろしいですか？`)) void run(() => actions.deleteWorkoutExercise({ workoutExerciseId: exercise.id }));
           }}>×</button>
         </div>
+        <RecommendationTargetCard target={exercise.recommendationTarget} completed={workout.status === "COMPLETED"} />
         {active && <PreviousPerformance performance={previousPerformance[exercise.exerciseId] ?? null} />}
         {active && <ProvisionalSummary exercise={exercise} />}
         {(rows[exercise.id] ?? []).length > 0 && <>
