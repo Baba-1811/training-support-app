@@ -5,10 +5,13 @@ import {
   formatRestSeconds, formatTargetRepsAndSets, formatTargetWeight, joinCategoryLabels, recommendedCategoryImage,
 } from "@/lib/recommendations/display";
 import type { RecommendationResult } from "@/lib/recommendations/types";
+import { StartFromRecommendationButton } from "./start-from-recommendation-button";
 
-// Home "今日のおすすめ" card (Phase 5C-1). Read-only: shows the Recommendation Engine's result as-is, with no
-// Start CTA and no WorkoutPlan/WorkoutSession creation (that is a later phase). Server Component — the data is
-// already server-computed, so there is nothing here that needs the client.
+// Home "今日のおすすめ" card. Server Component: the Recommendation data is already server-computed, and the
+// only interactive part (Phase 5D's Start button) is split out into its own small Client Component below, so
+// this card never needs a client directive of its own. Starting a WORKOUT recommendation re-fetches and
+// re-persists on the server (see lib/workouts/mutations.ts) — this component only renders what it is given and
+// never calls that mutation layer or Prisma directly.
 export function RecommendationCard({ recommendation }: { recommendation: RecommendationResult | null }) {
   if (recommendation === null) {
     return <section aria-labelledby="recommendation-heading" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -51,5 +54,6 @@ export function RecommendationCard({ recommendation }: { recommendation: Recomme
         </li>;
       })}
     </ul>
+    <StartFromRecommendationButton />
   </section>;
 }

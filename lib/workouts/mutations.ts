@@ -1,6 +1,9 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/require-user";
+import { getTodayRecommendation } from "@/lib/recommendations/queries";
+import { getTodayCondition } from "@/lib/conditions/queries";
+import { jstDateOnly } from "@/lib/date/jst";
 import type { z } from "zod";
 import type * as schemas from "./validation";
 
@@ -36,6 +39,53 @@ export async function createWorkoutWithExercise(input: z.output<typeof schemas.s
       data: {
         userId: user.id, startedAt: new Date(), status: "IN_PROGRESS",
         exercises: { create: { exerciseId: exercise.id, exerciseOrder: 1 } },
+      },
+      select: { id: true },
+    });
+  });
+}
+
+// Recommendation -> WorkoutPlan snapshot -> WorkoutSession (Phase 5D). The client sends no Recommendation
+// payload at all (see startFromRecommendationSchema): this re-authenticates and re-runs getTodayRecommendation()
+// itself, so what gets persisted is always the latest server-side recomputation, never whatever Home happened to
+// render earlier. Only a WORKOUT result is ever persisted — null (no Condition) and REST both refuse via
+// INVALID_STATE, matching Home's own CTA rule (no Start CTA for either state).
+export async function createWorkoutFromRecommendation() {
+  const user = await requireUser();
+  const recommendation = await getTodayRecommendation();
+  if (!recommendation || recommendation.kind !== "WORKOUT" || recommendation.exercises.length === 0) {
+    throw new WorkoutError("INVALID_STATE");
+  }
+  // Separate from the Engine's own Condition read (getTodayConditionForRecommendation, which has no DB id by
+  // design): only here, for the Plan's sourceConditionId, do we need the actual DailyCondition row. A WORKOUT
+  // result already implies today's Condition exists, so a null here would mean the two reads disagreed about
+  // "today" — defended against rather than assumed away.
+  const condition = await getTodayCondition();
+  if (!condition) throw new WorkoutError("INVALID_STATE");
+
+  const exercises = recommendation.exercises;
+  // Two top-level creates, each with its own nested array create (same "no per-row follow-up query" pattern as
+  // createWorkoutWithExercise above), both inside one transaction: a WorkoutSession is never left pointing at a
+  // Plan that failed to finish, and a Plan never exists without the Session it was started for.
+  return prisma.$transaction(async (tx) => {
+    const plan = await tx.workoutPlan.create({
+      data: {
+        userId: user.id, sourceConditionId: condition.id, plannedDate: jstDateOnly(), status: "ACCEPTED",
+        recommendationReason: recommendation.recommendationReason,
+        exercises: { create: exercises.map((exercise, index) => ({
+          exerciseId: exercise.exerciseId, exerciseOrder: index + 1,
+          targetWeightKg: exercise.targetWeightKg, targetRepsMin: exercise.targetRepsMin,
+          targetRepsMax: exercise.targetRepsMax, targetSets: exercise.targetSets, restSeconds: exercise.restSeconds,
+        })) },
+      },
+      select: { id: true },
+    });
+    // No WorkoutSet here, ever: the existing Workout UI only creates a set once the user actually enters and
+    // confirms it (mutateWorkout's "createSet" case). Recommendation targets live in WorkoutPlanExercise only.
+    return tx.workoutSession.create({
+      data: {
+        userId: user.id, workoutPlanId: plan.id, startedAt: new Date(), status: "IN_PROGRESS",
+        exercises: { create: exercises.map((exercise, index) => ({ exerciseId: exercise.exerciseId, exerciseOrder: index + 1 })) },
       },
       select: { id: true },
     });

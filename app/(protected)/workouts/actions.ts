@@ -3,7 +3,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { unstable_rethrow } from "next/navigation";
 import { requireUser } from "@/lib/auth/require-user";
-import { createWorkout, createWorkoutWithExercise, mutateWorkout, WorkoutError } from "@/lib/workouts/mutations";
+import { createWorkout, createWorkoutWithExercise, createWorkoutFromRecommendation, mutateWorkout, WorkoutError } from "@/lib/workouts/mutations";
 import { getWorkout } from "@/lib/workouts/queries";
 import * as schemas from "@/lib/workouts/validation";
 import type { ActionResult } from "@/lib/workouts/types";
@@ -37,6 +37,9 @@ export async function startWorkout(input: unknown) {
 }
 export async function startWorkoutWithExercise(input: unknown) {
   return perform(schemas.startWorkoutWithExerciseSchema, input, async (data) => ({ sessionId: (await createWorkoutWithExercise(data)).id }));
+}
+export async function startWorkoutFromRecommendation(input: unknown) {
+  return perform(schemas.startFromRecommendationSchema, input, async () => ({ sessionId: (await createWorkoutFromRecommendation()).id }));
 }
 export async function updateWorkoutTitle(input: unknown) { return perform(schemas.updateWorkoutTitleSchema, input, (data) => updated({ kind: "title", input: data })); }
 export async function addExercise(input: unknown) { return perform(schemas.addExerciseSchema, input, (data) => updated({ kind: "addExercise", input: data })); }

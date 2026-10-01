@@ -118,12 +118,11 @@ describe("buildGrowthSnapshot (Home growth snapshot)", () => {
 
 // Home has no tsx-rendering test infra (vitest.config.mts only runs "tests/**/*.test.ts", environment: "node"),
 // so this checks the page's wiring the same way tests/navigation.test.ts checks routes: from the source text,
-// not by rendering. Phase 5C-1 only connects the existing Recommendation Engine to a read-only Home card; these
-// guard against the one thing the Phase explicitly forbids re-introducing by accident (a Workout/WorkoutPlan
-// mutation reachable from this read path).
-describe("Home page wiring (Phase 5C-1: today's Recommendation, read-only)", () => {
+// not by rendering.
+describe("Home page wiring (today's Recommendation)", () => {
   const homeSource = readFileSync(join(process.cwd(), "app", "(protected)", "page.tsx"), "utf8");
   const cardSource = readFileSync(join(process.cwd(), "components", "home", "recommendation-card.tsx"), "utf8");
+  const buttonSource = readFileSync(join(process.cwd(), "components", "home", "start-from-recommendation-button.tsx"), "utf8");
 
   it("Home fetches today's Recommendation via the existing Phase 5B query", () => {
     expect(homeSource).toMatch(/getTodayRecommendation/);
@@ -138,9 +137,15 @@ describe("Home page wiring (Phase 5C-1: today's Recommendation, read-only)", () 
     expect(cardSource).not.toMatch(/use client/);
   });
 
-  it("the Recommendation card creates no WorkoutPlan / WorkoutSession and has no Start CTA (not this Phase)", () => {
-    for (const forbidden of ["createWorkout(", "createWorkoutWithExercise(", "prisma.workoutPlan", "このメニューで始める"]) {
+  it("the Recommendation card never calls Prisma or the Workout mutation layer directly (Phase 5D: only the small Client Start button does, via the Server Action)", () => {
+    for (const forbidden of ["createWorkout(", "createWorkoutWithExercise(", "createWorkoutFromRecommendation", "prisma.workoutPlan", "@/lib/prisma"]) {
       expect(cardSource, forbidden).not.toContain(forbidden);
     }
+    expect(cardSource).toMatch(/<StartFromRecommendationButton\b/);
+  });
+
+  it("the Start button is its own Client Component and sends no Recommendation payload to the server", () => {
+    expect(buttonSource).toMatch(/use client/);
+    expect(buttonSource).toMatch(/startWorkoutFromRecommendation\(\{\}\)/);
   });
 });
