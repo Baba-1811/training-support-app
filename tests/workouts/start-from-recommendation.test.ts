@@ -4,14 +4,16 @@ import type { RecommendationResult } from "@/lib/recommendations/types";
 const mocks = vi.hoisted(() => {
   const model = () => ({ create: vi.fn() });
   return {
-    auth: vi.fn(), getTodayRecommendation: vi.fn(), getTodayCondition: vi.fn(),
+    auth: vi.fn(), getTodayRecommendationForUser: vi.fn(), getTodayConditionForUser: vi.fn(),
     plan: model(), session: model(), transaction: vi.fn(), revalidate: vi.fn(),
   };
 });
 vi.mock("@/lib/auth/require-user", () => ({ requireUser: mocks.auth }));
 vi.mock("@/lib/prisma", () => ({ prisma: { workoutPlan: mocks.plan, workoutSession: mocks.session, $transaction: mocks.transaction } }));
-vi.mock("@/lib/recommendations/queries", () => ({ getTodayRecommendation: mocks.getTodayRecommendation }));
-vi.mock("@/lib/conditions/queries", () => ({ getTodayCondition: mocks.getTodayCondition }));
+// createWorkoutFromRecommendation() calls these *ForUser variants directly with its own already-confirmed
+// user.id (no requireUser() of their own — see lib/workouts/mutations.ts's Auth call amplification fix).
+vi.mock("@/lib/recommendations/queries", () => ({ getTodayRecommendationForUser: mocks.getTodayRecommendationForUser }));
+vi.mock("@/lib/conditions/queries", () => ({ getTodayConditionForUser: mocks.getTodayConditionForUser }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidate }));
 vi.mock("next/navigation", () => ({ unstable_rethrow: (error: unknown) => { if (error instanceof Error && error.message === "REDIRECT") throw error; } }));
 
@@ -49,8 +51,8 @@ const condition = { id: conditionId, conditionDate: "2026-09-28", sleepHours: "7
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.auth.mockResolvedValue({ id: owner });
-  mocks.getTodayRecommendation.mockResolvedValue(workoutRecommendation);
-  mocks.getTodayCondition.mockResolvedValue(condition);
+  mocks.getTodayRecommendationForUser.mockResolvedValue(workoutRecommendation);
+  mocks.getTodayConditionForUser.mockResolvedValue(condition);
   mocks.plan.create.mockResolvedValue({ id: planId });
   mocks.session.create.mockResolvedValue({ id: sessionId });
   mocks.transaction.mockImplementation(async (callback) => callback({ workoutPlan: mocks.plan, workoutSession: mocks.session }));
@@ -60,14 +62,21 @@ describe("createWorkoutFromRecommendation (Phase 5D: Recommendation -> WorkoutPl
   it("requires authentication before reading the Recommendation", async () => {
     mocks.auth.mockRejectedValue(new Error("REDIRECT"));
     await expect(createWorkoutFromRecommendation()).rejects.toThrow("REDIRECT");
-    expect(mocks.getTodayRecommendation).not.toHaveBeenCalled();
+    expect(mocks.getTodayRecommendationForUser).not.toHaveBeenCalled();
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
 
-  it("re-fetches today's Recommendation itself, taking no payload from the caller", async () => {
+  it("re-fetches today's Recommendation itself, taking no payload from the caller, using its own confirmed userId", async () => {
     await createWorkoutFromRecommendation();
-    expect(mocks.getTodayRecommendation).toHaveBeenCalledTimes(1);
-    expect(mocks.getTodayRecommendation).toHaveBeenCalledWith();
+    expect(mocks.getTodayRecommendationForUser).toHaveBeenCalledTimes(1);
+    expect(mocks.getTodayRecommendationForUser).toHaveBeenCalledWith(owner);
+  });
+
+  // Auth call amplification fix: requireUser() must be called exactly once, not once here and again inside
+  // each *ForUser read (those take no requireUser() of their own by design).
+  it("authenticates exactly once for the whole Start flow", async () => {
+    await createWorkoutFromRecommendation();
+    expect(mocks.auth).toHaveBeenCalledTimes(1);
   });
 
   it("creates the WorkoutPlan and WorkoutSession inside one transaction", async () => {
@@ -116,21 +125,21 @@ describe("createWorkoutFromRecommendation (Phase 5D: Recommendation -> WorkoutPl
   });
 
   it("refuses (no Plan/Session) when there is no Condition today (Recommendation is null)", async () => {
-    mocks.getTodayRecommendation.mockResolvedValue(null);
+    mocks.getTodayRecommendationForUser.mockResolvedValue(null);
     await expect(createWorkoutFromRecommendation()).rejects.toThrow("INVALID_STATE");
     expect(mocks.transaction).not.toHaveBeenCalled();
     expect(mocks.plan.create).not.toHaveBeenCalled();
   });
 
   it("refuses (no Plan/Session) when the server-side recomputation now returns REST", async () => {
-    mocks.getTodayRecommendation.mockResolvedValue(restRecommendation);
+    mocks.getTodayRecommendationForUser.mockResolvedValue(restRecommendation);
     await expect(createWorkoutFromRecommendation()).rejects.toThrow("INVALID_STATE");
     expect(mocks.transaction).not.toHaveBeenCalled();
     expect(mocks.plan.create).not.toHaveBeenCalled();
   });
 
   it("refuses defensively if, despite a WORKOUT result, today's Condition cannot be found for sourceConditionId", async () => {
-    mocks.getTodayCondition.mockResolvedValue(null);
+    mocks.getTodayConditionForUser.mockResolvedValue(null);
     await expect(createWorkoutFromRecommendation()).rejects.toThrow("INVALID_STATE");
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
@@ -159,7 +168,7 @@ describe("startWorkoutFromRecommendation (Server Action)", () => {
   });
 
   it("maps a REST/null Recommendation at Start-time to a user-facing INVALID_STATE error, not a crash", async () => {
-    mocks.getTodayRecommendation.mockResolvedValue(restRecommendation);
+    mocks.getTodayRecommendationForUser.mockResolvedValue(restRecommendation);
     expect(await actions.startWorkoutFromRecommendation({})).toMatchObject({ ok: false, code: "INVALID_STATE" });
     expect(mocks.plan.create).not.toHaveBeenCalled();
   });

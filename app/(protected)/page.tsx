@@ -1,11 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth/require-user";
-import { listCompletedWorkouts, listExerciseTrends, listInProgressWorkouts } from "@/lib/workouts/queries";
+import { listCompletedWorkoutsForUser, listExerciseTrendsForUser, listInProgressWorkoutsForUser } from "@/lib/workouts/queries";
 import { buildGrowthSnapshot } from "@/lib/workouts/analytics-trend";
 import { splitInProgress } from "@/lib/workouts/in-progress";
-import { getTodayCondition } from "@/lib/conditions/queries";
-import { getTodayRecommendation } from "@/lib/recommendations/queries";
+import { getTodayConditionForUser } from "@/lib/conditions/queries";
+import { getTodayRecommendationForUser } from "@/lib/recommendations/queries";
 import { StartWorkoutForm } from "@/components/workouts/start-workout-form";
 import { InProgressWorkoutCard } from "@/components/workouts/in-progress-workout-card";
 import { RecentWorkoutsSection } from "@/components/workouts/recent-workouts-section";
@@ -16,14 +16,22 @@ import { RecommendationCard } from "@/components/home/recommendation-card";
 const RECENT_WORKOUT_COUNT = 3;
 
 export default async function Home() {
-  await requireUser();
+  // Authenticate exactly once for this render, then hand the confirmed user.id to every internal query below
+  // (the *ForUser variants, none of which authenticate on their own). Before this fix, each of the five calls
+  // independently re-ran the same Auth check, and the Recommendation read alone fanned out into four more
+  // internal re-checks — up to nine logical Auth lookups for one Home render. The per-request memoization this
+  // project's auth helper uses normally collapses those into a single real Supabase Auth API call per render,
+  // but that collapsing is an implementation detail of the helper, not something this page's own correctness
+  // should depend on; it also does nothing for the separate Proxy-level check that runs before this render even
+  // starts (see lib/supabase/proxy.ts) — the real fix is not re-checking auth here at all.
+  const user = await requireUser();
   // Five owner-scoped queries, none per-row: recent workouts (bounded), the Analytics trend data, unfinished
   // workouts, today's Daily Condition (its own MuscleCondition rows ride along in one nested select), and
-  // today's Recommendation (Phase 5C-1; getTodayRecommendation() re-reads Condition internally for the engine's
-  // own shape — an accepted duplicate single-row read, not an N+1 — alongside its own candidate/history queries).
+  // today's Recommendation (its ForUser variant re-reads Condition internally for the engine's own shape — an
+  // accepted duplicate single-row read, not an N+1 — alongside its own candidate/history queries).
   const [recent, trends, inProgress, condition, recommendation] = await Promise.all([
-    listCompletedWorkouts(RECENT_WORKOUT_COUNT), listExerciseTrends(), listInProgressWorkouts(), getTodayCondition(),
-    getTodayRecommendation(),
+    listCompletedWorkoutsForUser(user.id, RECENT_WORKOUT_COUNT), listExerciseTrendsForUser(user.id),
+    listInProgressWorkoutsForUser(user.id), getTodayConditionForUser(user.id), getTodayRecommendationForUser(user.id),
   ]);
   const { current, others } = splitInProgress(inProgress);
   return <main className="mx-auto w-full max-w-[480px] space-y-6 px-4 py-5 text-slate-900">

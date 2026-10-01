@@ -4,14 +4,16 @@ const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   exercise: { findMany: vi.fn() },
   workoutExercise: { findMany: vi.fn() },
-  getTodayConditionForRecommendation: vi.fn(),
-  getLatestExercisePerformance: vi.fn(),
+  getTodayConditionForRecommendationForUser: vi.fn(),
+  getLatestExercisePerformanceForUser: vi.fn(),
   recommendWorkout: vi.fn(),
 }));
 vi.mock("@/lib/auth/require-user", () => ({ requireUser: mocks.auth }));
 vi.mock("@/lib/prisma", () => ({ prisma: { exercise: mocks.exercise, workoutExercise: mocks.workoutExercise } }));
-vi.mock("@/lib/conditions/queries", () => ({ getTodayConditionForRecommendation: mocks.getTodayConditionForRecommendation }));
-vi.mock("@/lib/workouts/queries", () => ({ getLatestExercisePerformance: mocks.getLatestExercisePerformance }));
+// getTodayRecommendation() now delegates to getTodayRecommendationForUser(), which calls the *ForUser variants
+// directly (no requireUser() of their own — see lib/recommendations/queries.ts's Auth call amplification fix).
+vi.mock("@/lib/conditions/queries", () => ({ getTodayConditionForRecommendationForUser: mocks.getTodayConditionForRecommendationForUser }));
+vi.mock("@/lib/workouts/queries", () => ({ getLatestExercisePerformanceForUser: mocks.getLatestExercisePerformanceForUser }));
 // lib/recommendations/queries.ts imports this as "./engine"; Vitest mocks by resolved module identity, so the
 // alias form below intercepts it just the same. lib/date/jst is deliberately left unmocked (see the
 // getTodayRecommendation describe block): its pure, already-tested logic runs for real throughout this file.
@@ -19,6 +21,7 @@ vi.mock("@/lib/recommendations/engine", () => ({ recommendWorkout: mocks.recomme
 
 import {
   listRecommendationCandidates, reduceLastTrainedAtByMuscle, getLastTrainedAtByMuscle, getTodayRecommendation,
+  getTodayRecommendationForUser,
 } from "@/lib/recommendations/queries";
 
 const owner = "11111111-1111-4111-8111-111111111111";
@@ -152,18 +155,18 @@ describe("getTodayRecommendation", () => {
   afterEach(() => vi.useRealTimers());
 
   it("returns null (and never calls the engine or the latest-performance query) when no Condition was entered today", async () => {
-    mocks.getTodayConditionForRecommendation.mockResolvedValue(null);
+    mocks.getTodayConditionForRecommendationForUser.mockResolvedValue(null);
     mocks.exercise.findMany.mockResolvedValue([]);
     mocks.workoutExercise.findMany.mockResolvedValue([]);
     const result = await getTodayRecommendation();
     expect(result).toBeNull();
-    expect(mocks.getLatestExercisePerformance).not.toHaveBeenCalled();
+    expect(mocks.getLatestExercisePerformanceForUser).not.toHaveBeenCalled();
     expect(mocks.recommendWorkout).not.toHaveBeenCalled();
   });
 
   it("builds the RecommendationContext correctly and returns the engine's result as-is", async () => {
     const condition = { conditionDate: "2026-09-28", sleepHours: "7.5", fatigueLevel: 3, availableMinutes: 60, sorenessByMuscle: {} };
-    mocks.getTodayConditionForRecommendation.mockResolvedValue(condition);
+    mocks.getTodayConditionForRecommendationForUser.mockResolvedValue(condition);
     mocks.exercise.findMany.mockResolvedValue([
       { id: benchPressId, name: "Bench Press", equipmentType: "BARBELL", exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest", isActive: true } }] },
       { id: squatId, name: "Squat", equipmentType: "BARBELL", exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Quadriceps", isActive: true } }] },
@@ -173,13 +176,13 @@ describe("getTodayRecommendation", () => {
       exercise: { exerciseMuscles: [{ muscle: { name: "Chest" } }] },
     }]);
     const previousPerformanceByExerciseId = { [benchPressId]: { startedAt: "2026-09-25T00:00:00.000Z", sets: [{ weightKg: "60.00", reps: 8 }] } };
-    mocks.getLatestExercisePerformance.mockResolvedValue(previousPerformanceByExerciseId);
+    mocks.getLatestExercisePerformanceForUser.mockResolvedValue(previousPerformanceByExerciseId);
     const engineResult = { kind: "REST", recommendationReason: "test" };
     mocks.recommendWorkout.mockReturnValue(engineResult);
 
     const result = await getTodayRecommendation();
 
-    expect(mocks.getLatestExercisePerformance).toHaveBeenCalledWith([benchPressId, squatId]);
+    expect(mocks.getLatestExercisePerformanceForUser).toHaveBeenCalledWith(owner, [benchPressId, squatId]);
     expect(mocks.recommendWorkout).toHaveBeenCalledWith({
       today: "2026-09-28",
       condition,
@@ -191,5 +194,18 @@ describe("getTodayRecommendation", () => {
       previousPerformanceByExerciseId,
     });
     expect(result).toBe(engineResult); // passed through unchanged, not re-shaped
+  });
+
+  // Auth call amplification fix: getTodayRecommendation() used to fan out into five separate requireUser()
+  // calls (itself + listRecommendationCandidates + getLastTrainedAtByMuscle + getTodayConditionForRecommendation
+  // + getLatestExercisePerformance). getTodayRecommendationForUser() is the internal variant Home now calls
+  // directly with its own already-confirmed user.id, so none of that chain should call requireUser() again.
+  it("getTodayRecommendationForUser never calls requireUser() itself", async () => {
+    mocks.getTodayConditionForRecommendationForUser.mockResolvedValue(null);
+    mocks.exercise.findMany.mockResolvedValue([]);
+    mocks.workoutExercise.findMany.mockResolvedValue([]);
+    await getTodayRecommendationForUser(owner);
+    expect(mocks.auth).not.toHaveBeenCalled();
+    expect(mocks.getTodayConditionForRecommendationForUser).toHaveBeenCalledWith(owner);
   });
 });

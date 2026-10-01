@@ -2,8 +2,8 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/require-user";
 import { jstDateOnly } from "@/lib/date/jst";
-import { getTodayConditionForRecommendation } from "@/lib/conditions/queries";
-import { getLatestExercisePerformance } from "@/lib/workouts/queries";
+import { getTodayConditionForRecommendationForUser } from "@/lib/conditions/queries";
+import { getLatestExercisePerformanceForUser } from "@/lib/workouts/queries";
 import { toJstDateOnly } from "./rules";
 import { recommendWorkout } from "./engine";
 import type { ExerciseCandidateDTO, ExerciseMuscleLinkDTO, RecommendationResult } from "./types";
@@ -19,6 +19,15 @@ const LOOKBACK_DAYS = 30;
 // not depend on candidate order (see lib/recommendations/engine.ts's category/tie-break logic).
 export async function listRecommendationCandidates(): Promise<ExerciseCandidateDTO[]> {
   await requireUser();
+  return listRecommendationCandidatesInternal();
+}
+
+// Internal variant: no requireUser() of its own. Unlike the other *ForUser query variants in this codebase,
+// this one takes no userId either — the Exercise Library is not owner-scoped data, so `requireUser()` here was
+// only ever an auth GATE (any signed-in user may read it), never an ownership filter. getTodayRecommendationForUser
+// already runs behind one requireUser() call made by its own caller, so gating again here would just be a second
+// Supabase Auth API call for the same already-authenticated request (the Auth call amplification this file fixes).
+async function listRecommendationCandidatesInternal(): Promise<ExerciseCandidateDTO[]> {
   const exercises = await prisma.exercise.findMany({
     where: { isActive: true },
     select: {
@@ -60,9 +69,15 @@ export function reduceLastTrainedAtByMuscle(rows: readonly MuscleTrainingRow[]):
 // trained", which is intentional (see lib/recommendations/types.ts). ONE query; grouping is the pure reducer above.
 export async function getLastTrainedAtByMuscle(today: Date): Promise<Partial<Record<string, string>>> {
   const user = await requireUser();
+  return getLastTrainedAtByMuscleForUser(user.id, today);
+}
+
+// Internal, owner-scoped variant: no requireUser() of its own (same reasoning as lib/workouts/queries.ts's
+// *ForUser variants — the caller, getTodayRecommendationForUser, already authenticated once for this request).
+async function getLastTrainedAtByMuscleForUser(userId: string, today: Date): Promise<Partial<Record<string, string>>> {
   const lookbackStart = new Date(today.getTime() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
   const entries = await prisma.workoutExercise.findMany({
-    where: { workoutSession: { userId: user.id, status: "COMPLETED", startedAt: { gte: lookbackStart } } },
+    where: { workoutSession: { userId, status: "COMPLETED", startedAt: { gte: lookbackStart } } },
     select: {
       workoutSession: { select: { startedAt: true } },
       exercise: { select: { exerciseMuscles: { where: { role: "PRIMARY" }, select: { muscle: { select: { name: true } } } } } },
@@ -78,20 +93,31 @@ export async function getLastTrainedAtByMuscle(today: Date): Promise<Partial<Rec
 // engine's own { kind: "REST" } result, which means a Condition exists but rest is recommended — see
 // getTodayConditionForRecommendation's own comment).
 export async function getTodayRecommendation(): Promise<RecommendationResult | null> {
-  await requireUser();
+  const user = await requireUser();
+  return getTodayRecommendationForUser(user.id);
+}
+
+// Internal, owner-scoped variant: no requireUser() of its own, and none of the internal helpers it calls
+// (listRecommendationCandidatesInternal, getLastTrainedAtByMuscleForUser, getTodayConditionForRecommendationForUser,
+// getLatestExercisePerformanceForUser) re-authenticate either. Before this split, a single getTodayRecommendation()
+// call amplified into five separate requireUser() calls (itself + four internal queries), each a real Supabase
+// Auth API round trip when called outside the per-request React cache() that normally dedupes requireUser() — see
+// app/(protected)/page.tsx, which calls requireUser() once and passes that user.id to every Home query, this one
+// included. userId must always come from requireUser()'s own result, never from client input.
+export async function getTodayRecommendationForUser(userId: string): Promise<RecommendationResult | null> {
   const today = jstDateOnly();
   const todayString = today.toISOString().slice(0, 10);
 
   const [condition, exercises, lastTrainedAtByMuscle] = await Promise.all([
-    getTodayConditionForRecommendation(),
-    listRecommendationCandidates(),
-    getLastTrainedAtByMuscle(today),
+    getTodayConditionForRecommendationForUser(userId),
+    listRecommendationCandidatesInternal(),
+    getLastTrainedAtByMuscleForUser(userId, today),
   ]);
   if (!condition) return null;
 
   // Depends on the candidate list above, so it cannot join the Promise.all: only run it once we know which
   // Exercises are actually in play, and never for a Condition-less day (would be wasted work).
-  const previousPerformanceByExerciseId = await getLatestExercisePerformance(exercises.map((exercise) => exercise.exerciseId));
+  const previousPerformanceByExerciseId = await getLatestExercisePerformanceForUser(userId, exercises.map((exercise) => exercise.exerciseId));
 
   return recommendWorkout({ today: todayString, condition, exercises, lastTrainedAtByMuscle, previousPerformanceByExerciseId });
 }

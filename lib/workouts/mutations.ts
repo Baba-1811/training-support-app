@@ -1,8 +1,8 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/require-user";
-import { getTodayRecommendation } from "@/lib/recommendations/queries";
-import { getTodayCondition } from "@/lib/conditions/queries";
+import { getTodayRecommendationForUser } from "@/lib/recommendations/queries";
+import { getTodayConditionForUser } from "@/lib/conditions/queries";
 import { jstDateOnly } from "@/lib/date/jst";
 import type { z } from "zod";
 import type * as schemas from "./validation";
@@ -46,21 +46,25 @@ export async function createWorkoutWithExercise(input: z.output<typeof schemas.s
 }
 
 // Recommendation -> WorkoutPlan snapshot -> WorkoutSession (Phase 5D). The client sends no Recommendation
-// payload at all (see startFromRecommendationSchema): this re-authenticates and re-runs getTodayRecommendation()
+// payload at all (see startFromRecommendationSchema): this re-authenticates and re-runs the Recommendation
 // itself, so what gets persisted is always the latest server-side recomputation, never whatever Home happened to
 // render earlier. Only a WORKOUT result is ever persisted — null (no Condition) and REST both refuse via
 // INVALID_STATE, matching Home's own CTA rule (no Start CTA for either state).
+//
+// Auth call amplification fix: requireUser() is called exactly once here, and that same user.id is passed into
+// both *ForUser reads below — previously, getTodayRecommendation() and getTodayCondition() each re-authenticated
+// on their own, for a total of three requireUser() calls in this one Action.
 export async function createWorkoutFromRecommendation() {
   const user = await requireUser();
-  const recommendation = await getTodayRecommendation();
+  const recommendation = await getTodayRecommendationForUser(user.id);
   if (!recommendation || recommendation.kind !== "WORKOUT" || recommendation.exercises.length === 0) {
     throw new WorkoutError("INVALID_STATE");
   }
-  // Separate from the Engine's own Condition read (getTodayConditionForRecommendation, which has no DB id by
-  // design): only here, for the Plan's sourceConditionId, do we need the actual DailyCondition row. A WORKOUT
+  // Separate from the Engine's own Condition read (getTodayConditionForRecommendationForUser, which has no DB id
+  // by design): only here, for the Plan's sourceConditionId, do we need the actual DailyCondition row. A WORKOUT
   // result already implies today's Condition exists, so a null here would mean the two reads disagreed about
   // "today" — defended against rather than assumed away.
-  const condition = await getTodayCondition();
+  const condition = await getTodayConditionForUser(user.id);
   if (!condition) throw new WorkoutError("INVALID_STATE");
 
   const exercises = recommendation.exercises;

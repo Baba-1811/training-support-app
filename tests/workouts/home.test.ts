@@ -149,3 +149,32 @@ describe("Home page wiring (today's Recommendation)", () => {
     expect(buttonSource).toMatch(/startWorkoutFromRecommendation\(\{\}\)/);
   });
 });
+
+// Auth call amplification fix: before this fix, Home called requireUser() once directly and then again inside
+// each of its five queries (getTodayRecommendation() alone fanned out into four more internally) — up to nine
+// logical requireUser() calls for one render. Home now authenticates exactly once and passes that user.id into
+// every internal *ForUser query directly, so this checks the structural fix itself (not just that the queries
+// behave correctly in isolation, which tests/workouts/queries-for-user.test.ts, tests/conditions/queries-for-user.test.ts
+// and tests/recommendations/queries.test.ts already cover).
+describe("Home auth call count (Auth bug fix)", () => {
+  const homeSource = readFileSync(join(process.cwd(), "app", "(protected)", "page.tsx"), "utf8");
+
+  it("calls requireUser() exactly once", () => {
+    expect(homeSource.match(/requireUser\(\)/g)).toHaveLength(1);
+  });
+
+  it("passes that one confirmed user.id into every query, using the *ForUser variants rather than the public wrappers", () => {
+    for (const call of [
+      "listCompletedWorkoutsForUser(user.id", "listExerciseTrendsForUser(user.id)", "listInProgressWorkoutsForUser(user.id)",
+      "getTodayConditionForUser(user.id)", "getTodayRecommendationForUser(user.id)",
+    ]) {
+      expect(homeSource, call).toContain(call);
+    }
+    // The bare public wrappers (which each call requireUser() again) must not also be called from Home. Each
+    // "(" immediately follows the short name only in the bare wrapper call, never in the longer *ForUser(...)
+    // call, so a plain substring check (not a regex) is enough to tell them apart.
+    for (const forbidden of ["listCompletedWorkouts(", "listExerciseTrends(", "listInProgressWorkouts(", "getTodayCondition(", "getTodayRecommendation("]) {
+      expect(homeSource, forbidden).not.toContain(forbidden);
+    }
+  });
+});
