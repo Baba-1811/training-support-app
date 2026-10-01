@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -111,5 +113,34 @@ describe("buildGrowthSnapshot (Home growth snapshot)", () => {
       point("a", "2026-09-10T00:00:00Z", 85, 1200), point("b", "2026-09-20T00:00:00Z", 80, 1000),
     ])]);
     expect(snapshot?.comparison).toEqual({ e1rmDeltaKg: -5, volumeDeltaKg: -200 });
+  });
+});
+
+// Home has no tsx-rendering test infra (vitest.config.mts only runs "tests/**/*.test.ts", environment: "node"),
+// so this checks the page's wiring the same way tests/navigation.test.ts checks routes: from the source text,
+// not by rendering. Phase 5C-1 only connects the existing Recommendation Engine to a read-only Home card; these
+// guard against the one thing the Phase explicitly forbids re-introducing by accident (a Workout/WorkoutPlan
+// mutation reachable from this read path).
+describe("Home page wiring (Phase 5C-1: today's Recommendation, read-only)", () => {
+  const homeSource = readFileSync(join(process.cwd(), "app", "(protected)", "page.tsx"), "utf8");
+  const cardSource = readFileSync(join(process.cwd(), "components", "home", "recommendation-card.tsx"), "utf8");
+
+  it("Home fetches today's Recommendation via the existing Phase 5B query", () => {
+    expect(homeSource).toMatch(/getTodayRecommendation/);
+    expect(homeSource).toMatch(/@\/lib\/recommendations\/queries/);
+  });
+
+  it("Home renders the Recommendation card", () => {
+    expect(homeSource).toMatch(/<RecommendationCard\b/);
+  });
+
+  it("the Recommendation card stays a Server Component (no unnecessary \"use client\")", () => {
+    expect(cardSource).not.toMatch(/use client/);
+  });
+
+  it("the Recommendation card creates no WorkoutPlan / WorkoutSession and has no Start CTA (not this Phase)", () => {
+    for (const forbidden of ["createWorkout(", "createWorkoutWithExercise(", "prisma.workoutPlan", "このメニューで始める"]) {
+      expect(cardSource, forbidden).not.toContain(forbidden);
+    }
   });
 });
