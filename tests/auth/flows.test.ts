@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { AuthApiError } from "@supabase/supabase-js";
 const mocks = vi.hoisted(() => ({
   auth: { signUp: vi.fn(), signInWithPassword: vi.fn(), signOut: vi.fn(), getUser: vi.fn(), verifyOtp: vi.fn(), exchangeCodeForSession: vi.fn() },
   profile: vi.fn(), report: vi.fn(), client: vi.fn(), revalidate: vi.fn(),
@@ -107,6 +108,30 @@ describe("server-side protection", () => {
   it("blocks on unavailable profiles", async () => {
     mocks.profile.mockRejectedValue(new Error("offline"));
     await expect(requireUser()).rejects.toThrow("REDIRECT:/auth/profile-error");
+  });
+
+  // The reported Auth bug: a 429 ("Request rate limit reached") from Supabase was being treated as "not
+  // logged in" and sent the visitor to /login, which is both wrong (their session may be fine) and confusing.
+  it.each([
+    ["a 429 rate limit", new AuthApiError("Request rate limit reached", 429, "over_request_rate_limit")],
+    ["a 500 Auth API failure", new AuthApiError("Internal server error", 500, "unexpected_failure")],
+  ])("redirects to /auth/service-unavailable, not /login, on %s", async (_name, error) => {
+    mocks.auth.getUser.mockResolvedValue({ data: { user: null }, error });
+    await expect(requireUser()).rejects.toThrow("REDIRECT:/auth/service-unavailable");
+    expect(mocks.profile).not.toHaveBeenCalled();
+  });
+
+  // fail-closed: a transient failure must never resolve to a user, no matter how it is classified.
+  it("never returns a user on a transient Auth failure (no fail-open)", async () => {
+    mocks.auth.getUser.mockResolvedValue({ data: { user: null }, error: new AuthApiError("Request rate limit reached", 429, "over_request_rate_limit") });
+    await expect(requireUser()).rejects.toThrow(/^REDIRECT:/);
+    expect(mocks.profile).not.toHaveBeenCalled();
+  });
+
+  // A non-transient Auth API error (invalid/expired JWT) is still a real "not logged in" and keeps going to /login.
+  it("still redirects to /login for a non-transient Auth API error (e.g. an invalid JWT)", async () => {
+    mocks.auth.getUser.mockResolvedValue({ data: { user: null }, error: new AuthApiError("Invalid JWT", 401, "bad_jwt") });
+    await expect(requireUser()).rejects.toThrow("REDIRECT:/login");
   });
 });
 describe("confirmation", () => {
