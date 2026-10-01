@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/require-user";
 import { buildWorkoutAnalytics } from "./analytics";
 import { buildExerciseTrends } from "./analytics-trend";
+import { matchRecommendationTarget, type PlanExerciseSnapshot } from "./recommendation-target";
 import type {
   ExerciseAnalyticsDTO, ExerciseHistoryRecord, ExerciseTrend, PreviousExercisePerformanceDTO, PreviousSetDTO, WorkoutDTO, WorkoutHistorySummaryDTO,
 } from "./types";
@@ -11,25 +12,39 @@ export async function getWorkout(id: string): Promise<WorkoutDTO | null> {
   const user = await requireUser();
   const session = await prisma.workoutSession.findFirst({
     where: { id, userId: user.id },
-    include: { exercises: {
-      orderBy: { exerciseOrder: "asc" },
-      include: {
-        exercise: { select: { name: true, exerciseMuscles: {
-          where: { role: "PRIMARY" },
-          select: { muscle: { select: { name: true } } },
-          orderBy: { muscle: { name: "asc" } },
-        } } },
-        sets: { orderBy: { setNumber: "asc" } },
+    include: {
+      exercises: {
+        orderBy: { exerciseOrder: "asc" },
+        include: {
+          exercise: { select: { name: true, exerciseMuscles: {
+            where: { role: "PRIMARY" },
+            select: { muscle: { select: { name: true } } },
+            orderBy: { muscle: { name: "asc" } },
+          } } },
+          sets: { orderBy: { setNumber: "asc" } },
+        },
       },
-    } },
+      // Phase 5E-1: the Recommendation Target snapshot, read-only. Rides along in this same findFirst (one more
+      // relation on an already-owner-scoped query), not a per-exercise follow-up — null for a normal/Exercise
+      // Library-started Workout, where workoutPlanId (and so this relation) is null.
+      workoutPlan: { select: { exercises: { select: {
+        exerciseId: true, exerciseOrder: true, targetWeightKg: true, targetRepsMin: true, targetRepsMax: true, targetSets: true, restSeconds: true,
+      } } } },
+    },
   });
   if (!session) return null;
+  const planExercises: PlanExerciseSnapshot[] | null = session.workoutPlan?.exercises.map((row) => ({
+    exerciseId: row.exerciseId, exerciseOrder: row.exerciseOrder,
+    targetWeightKg: row.targetWeightKg === null ? null : Number(row.targetWeightKg),
+    targetRepsMin: row.targetRepsMin, targetRepsMax: row.targetRepsMax, targetSets: row.targetSets, restSeconds: row.restSeconds,
+  })) ?? null;
   return {
     id: session.id, title: session.title, status: session.status,
     startedAt: session.startedAt.toISOString(), completedAt: session.completedAt?.toISOString() ?? null,
     exercises: session.exercises.map((entry) => ({
       id: entry.id, exerciseId: entry.exerciseId, name: entry.exercise.name, exerciseOrder: entry.exerciseOrder,
       muscles: entry.exercise.exerciseMuscles.map((relation) => relation.muscle.name),
+      recommendationTarget: matchRecommendationTarget(entry, planExercises),
       sets: entry.sets.map((set) => ({
         id: set.id, setNumber: set.setNumber, weightKg: set.weightKg.toString(), reps: set.reps,
         rir: set.rir?.toString() ?? null, setType: set.setType, completed: set.completed,

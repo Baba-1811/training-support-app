@@ -159,9 +159,9 @@ describe("buildWorkoutAnalytics", () => {
   const workout = {
     startedAt: NOW,
     exercises: [
-      { id: "we-1", exerciseId: ex1, name: "A", exerciseOrder: 1, muscles: [], sets: [
+      { id: "we-1", exerciseId: ex1, name: "A", exerciseOrder: 1, muscles: [], recommendationTarget: null, sets: [
         { id: "s1", setNumber: 1, weightKg: "60.00", reps: 10, rir: null, setType: "WORKING" as const, completed: true }] },
-      { id: "we-2", exerciseId: ex2, name: "B", exerciseOrder: 2, muscles: [], sets: [
+      { id: "we-2", exerciseId: ex2, name: "B", exerciseOrder: 2, muscles: [], recommendationTarget: null, sets: [
         { id: "s2", setNumber: 1, weightKg: "20.00", reps: 10, rir: null, setType: "WORKING" as const, completed: true }] },
     ],
   };

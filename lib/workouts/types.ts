@@ -2,8 +2,18 @@ export type SetDTO = {
   id: string; setNumber: number; weightKg: string; reps: number; rir: string | null;
   setType: "WORKING" | "WARMUP"; completed: boolean;
 };
+// WorkoutPlanExercise snapshot, as read for display only (Phase 5E-1): the Recommendation Target saved at Start
+// time (lib/workouts/mutations.ts#createWorkoutFromRecommendation), never recomputed and never written back to
+// a WorkoutSet. null fields mean "no history-based number was proposed for this exercise", same convention as
+// RecommendedExercise.targetWeightKg (lib/recommendations/types.ts) — never a 0/placeholder.
+export type WorkoutRecommendationTargetDTO = {
+  targetWeightKg: number | null; targetRepsMin: number | null; targetRepsMax: number | null;
+  targetSets: number; restSeconds: number | null;
+};
 export type ExerciseDTO = {
   id: string; exerciseId: string; name: string; exerciseOrder: number; muscles: string[]; sets: SetDTO[];
+  // null for a normal/Exercise-Library-started Workout (no WorkoutPlan) or if this Session predates Phase 5D.
+  recommendationTarget: WorkoutRecommendationTargetDTO | null;
 };
 export type WorkoutDTO = {
   id: string; title: string | null; startedAt: string; completedAt: string | null;

@@ -18,8 +18,8 @@ const set = (weightKg: string, reps: number) => ({ id: `s-${weightKg}-${reps}`, 
 const workout = (status: WorkoutDTO["status"] = "COMPLETED"): WorkoutDTO => ({
   id: sessionId, title: null, startedAt: "2026-09-21T00:00:00.000Z", completedAt: "2026-09-21T01:00:00.000Z", status,
   exercises: [
-    { id: "we-1", exerciseId: bench, name: "ベンチプレス", exerciseOrder: 1, muscles: [], sets: [set("60.00", 10)] },
-    { id: "we-2", exerciseId: squat, name: "スクワット", exerciseOrder: 2, muscles: [], sets: [set("80.00", 5)] },
+    { id: "we-1", exerciseId: bench, name: "ベンチプレス", exerciseOrder: 1, muscles: [], recommendationTarget: null, sets: [set("60.00", 10)] },
+    { id: "we-2", exerciseId: squat, name: "スクワット", exerciseOrder: 2, muscles: [], recommendationTarget: null, sets: [set("80.00", 5)] },
   ],
 });
 const past = (exerciseId: string, id: string, startedAt: string, weightKg: string, reps: number) => ({
