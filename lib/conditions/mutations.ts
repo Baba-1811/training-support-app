@@ -17,12 +17,20 @@ export class ConditionError extends Error {
 // Muscle rows are deleted, never written back with sorenessLevel=0 (the DB CHECK does not allow 0).
 export async function saveDailyCondition(input: z.output<typeof saveDailyConditionSchema>): Promise<string> {
   const user = await requireUser();
+  return saveDailyConditionForUser(user.id, input);
+}
+
+// Internal, owner-scoped variant: no requireUser() of its own. For a caller that has already authenticated once
+// in this request (e.g. the Condition Server Action, see app/(protected)/condition/actions.ts) and wants to
+// reuse that same user.id instead of triggering a second Supabase Auth API call for the same request. userId
+// must always come from requireUser()'s own result, never from client input.
+export async function saveDailyConditionForUser(userId: string, input: z.output<typeof saveDailyConditionSchema>): Promise<string> {
   const conditionDate = jstDateOnly();
   return prisma.$transaction(async (tx) => {
     const condition = await tx.dailyCondition.upsert({
-      where: { userId_conditionDate: { userId: user.id, conditionDate } },
+      where: { userId_conditionDate: { userId, conditionDate } },
       create: {
-        userId: user.id, conditionDate,
+        userId, conditionDate,
         sleepHours: input.sleepHours.toFixed(1), fatigueLevel: input.fatigueLevel, availableMinutes: input.availableMinutes,
       },
       update: {

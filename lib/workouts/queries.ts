@@ -57,8 +57,16 @@ export async function getWorkout(id: string): Promise<WorkoutDTO | null> {
 // `limit` (Home / Analytics "recent workouts") bounds the query itself; the shape and ownership scope are the same.
 export async function listCompletedWorkouts(limit?: number): Promise<WorkoutHistorySummaryDTO[]> {
   const user = await requireUser();
+  return listCompletedWorkoutsForUser(user.id, limit);
+}
+
+// Internal, owner-scoped variant: no requireUser() of its own. For a caller that has already authenticated
+// once in this request (e.g. Home, see app/(protected)/page.tsx) and wants to pass that same user.id into
+// several queries without each one re-triggering a Supabase Auth API call. userId must always come from
+// requireUser()'s own result, never from client input (see Home / the Auth call amplification fix).
+export async function listCompletedWorkoutsForUser(userId: string, limit?: number): Promise<WorkoutHistorySummaryDTO[]> {
   const sessions = await prisma.workoutSession.findMany({
-    where: { userId: user.id, status: "COMPLETED" },
+    where: { userId, status: "COMPLETED" },
     orderBy: { startedAt: "desc" },
     ...(limit === undefined ? {} : { take: limit }),
     include: { exercises: {
@@ -147,12 +155,19 @@ export function reduceLatestExercisePerformance(
 // getPreviousExercisePerformance's single findFirst would.
 export async function getLatestExercisePerformance(exerciseIds: string[]): Promise<Record<string, PreviousExercisePerformanceDTO>> {
   const user = await requireUser();
+  return getLatestExercisePerformanceForUser(user.id, exerciseIds);
+}
+
+// Internal, owner-scoped variant: no requireUser() of its own (see listCompletedWorkoutsForUser's comment on why).
+export async function getLatestExercisePerformanceForUser(
+  userId: string, exerciseIds: string[],
+): Promise<Record<string, PreviousExercisePerformanceDTO>> {
   const uniqueIds = [...new Set(exerciseIds)];
   if (uniqueIds.length === 0) return {};
 
   // Query 1: which session is "latest" for each Exercise (fixed cost regardless of catalog size).
   const latestSessionRows = await prisma.workoutExercise.findMany({
-    where: { exerciseId: { in: uniqueIds }, workoutSession: { userId: user.id, status: "COMPLETED" } },
+    where: { exerciseId: { in: uniqueIds }, workoutSession: { userId, status: "COMPLETED" } },
     distinct: ["exerciseId"],
     orderBy: { workoutSession: { startedAt: "desc" } },
     select: { exerciseId: true, workoutSessionId: true, workoutSession: { select: { startedAt: true } } },
@@ -165,7 +180,7 @@ export async function getLatestExercisePerformance(exerciseIds: string[]): Promi
   // rather than trusting query 1's result alone.
   const setRows = await prisma.workoutExercise.findMany({
     where: {
-      workoutSession: { userId: user.id, status: "COMPLETED" },
+      workoutSession: { userId, status: "COMPLETED" },
       OR: latestSessionRows.map((row) => ({ exerciseId: row.exerciseId, workoutSessionId: row.workoutSessionId })),
     },
     orderBy: { exerciseOrder: "asc" }, // deterministic order when the same Exercise has two rows in one session
@@ -212,8 +227,13 @@ export async function getWorkoutAnalytics(workout: WorkoutDTO): Promise<Record<s
 // (the editor has no other way back once the user navigates away). Ids and timestamps only.
 export async function listInProgressWorkouts(): Promise<Array<{ id: string; title: string | null; startedAt: string }>> {
   const user = await requireUser();
+  return listInProgressWorkoutsForUser(user.id);
+}
+
+// Internal, owner-scoped variant: no requireUser() of its own (see listCompletedWorkoutsForUser's comment on why).
+export async function listInProgressWorkoutsForUser(userId: string): Promise<Array<{ id: string; title: string | null; startedAt: string }>> {
   const sessions = await prisma.workoutSession.findMany({
-    where: { userId: user.id, status: "IN_PROGRESS" },
+    where: { userId, status: "IN_PROGRESS" },
     orderBy: { startedAt: "desc" },
     select: { id: true, title: true, startedAt: true },
   });
@@ -227,9 +247,14 @@ export async function listInProgressWorkouts(): Promise<Array<{ id: string; titl
 // WorkoutSession(userId, startedAt), WorkoutExercise(workoutSessionId, exerciseId), WorkoutSet(workoutExerciseId, setNumber).
 export async function listExerciseTrends(): Promise<ExerciseTrend[]> {
   const user = await requireUser();
+  return listExerciseTrendsForUser(user.id);
+}
+
+// Internal, owner-scoped variant: no requireUser() of its own (see listCompletedWorkoutsForUser's comment on why).
+export async function listExerciseTrendsForUser(userId: string): Promise<ExerciseTrend[]> {
   const entries = await prisma.workoutExercise.findMany({
     where: {
-      workoutSession: { userId: user.id, status: "COMPLETED" },
+      workoutSession: { userId, status: "COMPLETED" },
       sets: { some: { completed: true, setType: "WORKING" } },
     },
     select: {

@@ -11,9 +11,17 @@ import type { ConditionRecommendationInputDTO, DailyConditionDTO } from "./types
 // return. Prisma's Decimal/Date values never leave this function; everything here becomes a plain DTO.
 export async function getTodayCondition(): Promise<DailyConditionDTO | null> {
   const user = await requireUser();
+  return getTodayConditionForUser(user.id);
+}
+
+// Internal, owner-scoped variant: no requireUser() of its own. For a caller that has already authenticated once
+// in this request (e.g. Home, see app/(protected)/page.tsx) and wants to pass that same user.id into several
+// queries without each one re-triggering a Supabase Auth API call. userId must always come from requireUser()'s
+// own result, never from client input.
+export async function getTodayConditionForUser(userId: string): Promise<DailyConditionDTO | null> {
   const conditionDate = jstDateOnly();
   const condition = await prisma.dailyCondition.findUnique({
-    where: { userId_conditionDate: { userId: user.id, conditionDate } },
+    where: { userId_conditionDate: { userId, conditionDate } },
     select: {
       id: true, conditionDate: true, sleepHours: true, fatigueLevel: true, availableMinutes: true,
       muscleConditions: { select: { sorenessLevel: true, muscle: { select: { name: true } } } },
@@ -37,9 +45,14 @@ export async function getTodayCondition(): Promise<DailyConditionDTO | null> {
 // distinct from the engine's own { kind: "REST" } result, which means a Condition exists but rest is recommended.
 export async function getTodayConditionForRecommendation(): Promise<ConditionRecommendationInputDTO | null> {
   const user = await requireUser();
+  return getTodayConditionForRecommendationForUser(user.id);
+}
+
+// Internal, owner-scoped variant: no requireUser() of its own (see getTodayConditionForUser's comment on why).
+export async function getTodayConditionForRecommendationForUser(userId: string): Promise<ConditionRecommendationInputDTO | null> {
   const conditionDate = jstDateOnly();
   const condition = await prisma.dailyCondition.findUnique({
-    where: { userId_conditionDate: { userId: user.id, conditionDate } },
+    where: { userId_conditionDate: { userId, conditionDate } },
     select: {
       conditionDate: true, sleepHours: true, fatigueLevel: true, availableMinutes: true,
       muscleConditions: { select: { sorenessLevel: true, muscle: { select: { name: true } } } },

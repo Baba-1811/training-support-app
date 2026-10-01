@@ -3,19 +3,19 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { unstable_rethrow } from "next/navigation";
 import { requireUser } from "@/lib/auth/require-user";
-import { saveDailyCondition as persistDailyCondition, ConditionError } from "@/lib/conditions/mutations";
+import { saveDailyConditionForUser as persistDailyConditionForUser, ConditionError } from "@/lib/conditions/mutations";
 import { saveDailyConditionSchema } from "@/lib/conditions/validation";
 import type { ActionResult } from "@/lib/conditions/types";
 
 export async function saveDailyCondition(input: unknown): Promise<ActionResult<{ id: string }>> {
-  await requireUser();
+  const user = await requireUser();
   const parsed = saveDailyConditionSchema.safeParse(input);
   if (!parsed.success) return {
     ok: false, code: "VALIDATION", message: "入力内容を確認してください。",
     fieldErrors: z.flattenError(parsed.error).fieldErrors as Record<string, string[]>,
   };
   try {
-    const id = await persistDailyCondition(parsed.data);
+    const id = await persistDailyConditionForUser(user.id, parsed.data);
     revalidatePath("/");
     revalidatePath("/condition");
     return { ok: true, data: { id } };

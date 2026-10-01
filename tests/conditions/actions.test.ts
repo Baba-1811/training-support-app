@@ -124,4 +124,13 @@ describe("saveDailyCondition (Server Action)", () => {
     expect(result).toMatchObject({ ok: false, code: "VALIDATION" });
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
+
+  // Auth call amplification fix: the Action used to call requireUser() itself, then call the mutation
+  // (lib/conditions/mutations.ts#saveDailyCondition), which called requireUser() again for the very same
+  // request. The Action now authenticates once and passes that user.id straight into saveDailyConditionForUser,
+  // so this Server Action's own requireUser() call is the only one in its call graph.
+  it("authenticates exactly once per save (Action -> saveDailyConditionForUser, no duplicate requireUser)", async () => {
+    await saveDailyCondition(valid);
+    expect(mocks.auth).toHaveBeenCalledTimes(1);
+  });
 });
