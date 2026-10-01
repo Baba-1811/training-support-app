@@ -1,9 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isTransientAuthFailure } from "@/lib/auth/classify-error";
 import { cookieOptions, supabaseConfig } from "./config";
 
 const publicPaths = new Set([
-  "/login", "/signup", "/check-email", "/auth/confirm", "/auth/error", "/auth/profile-error",
+  "/login", "/signup", "/check-email", "/auth/confirm", "/auth/error", "/auth/profile-error", "/auth/service-unavailable",
 ]);
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -24,12 +25,19 @@ export async function updateSession(request: NextRequest) {
   });
   const { data, error } = await supabase.auth.getClaims();
   if ((error || !data?.claims?.sub) && !publicPaths.has(request.nextUrl.pathname)) {
-    const target = request.nextUrl.clone();
-    target.pathname = "/login";
-    target.search = "";
-    const redirect = NextResponse.redirect(target, 303);
-    response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
-    response = redirect;
+    // A rate limit or outage on Supabase's side is not "this visitor is signed out" — do not force a /login
+    // redirect from a single flaky check here. Proxy is not this app's sole enforcement point (every Server
+    // Component/Action re-checks via requireUser(), which applies this exact same classification and is the
+    // actual fail-closed boundary for protected data); passing the request through on a transient failure just
+    // defers the decision to that authoritative check instead of guessing wrong at this layer.
+    if (!isTransientAuthFailure(error)) {
+      const target = request.nextUrl.clone();
+      target.pathname = "/login";
+      target.search = "";
+      const redirect = NextResponse.redirect(target, 303);
+      response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
+      response = redirect;
+    }
   }
   // Covers downstream auth Actions/confirmation that also set cookies.
   response.headers.set("Cache-Control", "private, no-store, max-age=0");
