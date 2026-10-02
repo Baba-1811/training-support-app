@@ -33,8 +33,8 @@ function SetTypeToggle({ value, disabled, onChange }: {
   </div>;
 }
 
-export function SetRow({ row, disabled, onChange, onSave, onDelete }: {
-  row: Row; disabled: boolean; onChange: (row: Row) => void; onSave: () => void; onDelete: () => void;
+export function SetRow({ row, disabled, repsPlaceholder, onChange, onSave, onDelete }: {
+  row: Row; disabled: boolean; repsPlaceholder?: string; onChange: (row: Row) => void; onSave: () => void; onDelete: () => void;
 }) {
   const estimate = row.weightKg.trim() && row.reps.trim() ? estimatedOneRepMax(Number(row.weightKg), Number(row.reps)) : null;
   const saved = Boolean(row.id);
@@ -44,7 +44,7 @@ export function SetRow({ row, disabled, onChange, onSave, onDelete }: {
       <input aria-label={`セット${row.setNumber} 重量(kg)`} inputMode="decimal" placeholder="kg" value={row.weightKg} disabled={disabled}
         onChange={(e) => onChange({ ...row, weightKg: e.target.value })}
         className="w-full min-w-0 rounded-lg border border-slate-300 bg-white px-1 py-2.5 text-center text-base tabular-nums focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100" />
-      <input aria-label={`セット${row.setNumber} 回数`} inputMode="numeric" placeholder="回" value={row.reps} disabled={disabled}
+      <input aria-label={`セット${row.setNumber} 回数`} inputMode="numeric" placeholder={repsPlaceholder ?? "回"} value={row.reps} disabled={disabled}
         onChange={(e) => onChange({ ...row, reps: e.target.value })}
         className="w-full min-w-0 rounded-lg border border-slate-300 bg-white px-1 py-2.5 text-center text-base tabular-nums focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100" />
       <input aria-label={`セット${row.setNumber} RIR`} inputMode="decimal" placeholder="RIR" value={row.rir} disabled={disabled}

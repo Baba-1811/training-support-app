@@ -11,12 +11,24 @@ export function formatRecommendationWeight(target: Pick<WorkoutRecommendationTar
   return formatTargetWeight(target.targetWeightKg);
 }
 
-function formatRecommendationReps(target: Pick<WorkoutRecommendationTargetDTO, "targetRepsMin" | "targetRepsMax">): string | null {
-  const { targetRepsMin, targetRepsMax } = target;
+function formatRepsRange(targetRepsMin: number | null, targetRepsMax: number | null): string | null {
   if (targetRepsMin === null && targetRepsMax === null) return null;
-  if (targetRepsMin === null) return `${targetRepsMax}回`;
-  if (targetRepsMax === null) return `${targetRepsMin}回`;
-  return targetRepsMin === targetRepsMax ? `${targetRepsMin}回` : `${targetRepsMin}–${targetRepsMax}回`;
+  if (targetRepsMin === null) return `${targetRepsMax}`;
+  if (targetRepsMax === null) return `${targetRepsMin}`;
+  return targetRepsMin === targetRepsMax ? `${targetRepsMin}` : `${targetRepsMin}–${targetRepsMax}`;
+}
+
+function formatRecommendationReps(target: Pick<WorkoutRecommendationTargetDTO, "targetRepsMin" | "targetRepsMax">): string | null {
+  const range = formatRepsRange(target.targetRepsMin, target.targetRepsMax);
+  return range === null ? null : `${range}回`;
+}
+
+// Phase 5E-2: placeholder/guide text for an unsaved WORKING Set's reps input (components/workouts/set-row.tsx).
+// reps is always actual-performed, never auto-filled (see workout-editor.tsx) — this is only ever shown as a
+// placeholder, the same way an empty input shows "回", never set as the input's value.
+export function formatRecommendationRepsGuide(target: Pick<WorkoutRecommendationTargetDTO, "targetRepsMin" | "targetRepsMax">): string | null {
+  const range = formatRepsRange(target.targetRepsMin, target.targetRepsMax);
+  return range === null ? null : `目安 ${range}`;
 }
 
 // targetSets is never null (schema: `targetSets Int`, always written by createWorkoutFromRecommendation), so

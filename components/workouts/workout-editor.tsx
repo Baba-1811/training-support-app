@@ -6,6 +6,7 @@ import { workoutTitle } from "@/lib/workouts/calculations";
 import { summarizePerformance } from "@/lib/workouts/analytics";
 import { formatE1rm, formatE1rmDelta, formatVolume, formatVolumeDelta } from "@/lib/workouts/analytics-format";
 import { recommendedInitialWeightKg } from "@/lib/workouts/recommendation-target";
+import { formatRecommendationRepsGuide } from "@/lib/workouts/recommendation-target-format";
 import type { ActionResult, ExerciseAnalyticsDTO, ExerciseDTO, PreviousExercisePerformanceDTO, WorkoutDTO, SetDTO } from "@/lib/workouts/types";
 import { SetRow, SetRowHeader, type Row } from "./set-row";
 import { RecommendationTargetCard } from "./recommendation-target-card";
@@ -212,7 +213,10 @@ export function WorkoutEditor({ initialWorkout, availableExercises, previousPerf
             <p className="mt-1 leading-snug text-slate-500">「あと何回できそうだったか」を入力します。0＝限界まで追い込んだ、2＝あと2回できた、という意味です。</p>
           </details>
         </>}
-        {(rows[exercise.id] ?? []).map((row) => <SetRow key={row.key} row={row} disabled={pending || !editable} onChange={(changed) => setRows({ ...rows, [exercise.id]: rows[exercise.id].map((item) => item.key === row.key ? changed : item) })}
+        {(rows[exercise.id] ?? []).map((row) => <SetRow key={row.key} row={row} disabled={pending || !editable}
+          repsPlaceholder={!row.id && row.setType === "WORKING" && exercise.recommendationTarget
+            ? formatRecommendationRepsGuide(exercise.recommendationTarget) ?? undefined : undefined}
+          onChange={(changed) => setRows({ ...rows, [exercise.id]: rows[exercise.id].map((item) => item.key === row.key ? changed : item) })}
           onSave={() => {
             const values = { weightKg: row.weightKg, reps: row.reps, rir: row.rir, setType: row.setType };
             void run(() => row.id ? actions.updateSet({ setId: row.id, ...values }) : actions.createSet({ workoutExerciseId: exercise.id, setNumber: row.setNumber, ...values }), (data, next) => {
