@@ -7,9 +7,12 @@ import { summarizePerformance } from "@/lib/workouts/analytics";
 import { formatE1rm, formatE1rmDelta, formatVolume, formatVolumeDelta } from "@/lib/workouts/analytics-format";
 import { recommendedInitialWeightKg } from "@/lib/workouts/recommendation-target";
 import { formatRecommendationRepsGuide } from "@/lib/workouts/recommendation-target-format";
+import { evaluateWorkoutRecommendations, type RecommendedExerciseEvaluation } from "@/lib/workouts/recommendation-evaluation";
+import { summarizeWorkoutRecommendationEvaluation } from "@/lib/workouts/recommendation-evaluation-format";
 import type { ActionResult, ExerciseAnalyticsDTO, ExerciseDTO, PreviousExercisePerformanceDTO, WorkoutDTO, SetDTO } from "@/lib/workouts/types";
 import { SetRow, SetRowHeader, type Row } from "./set-row";
 import { RecommendationTargetCard } from "./recommendation-target-card";
+import { RecommendationResultCard } from "./recommendation-result-card";
 
 const savedRow = (set: SetDTO): Row => ({ key: `set-${set.id}`, id: set.id, setNumber: set.setNumber,
   weightKg: set.weightKg, reps: String(set.reps), rir: set.rir ?? "", setType: set.setType });
@@ -142,6 +145,15 @@ export function WorkoutEditor({ initialWorkout, availableExercises, previousPerf
   const editable = workout.status !== "CANCELLED";
   const active = workout.status === "IN_PROGRESS";
   const elapsedLabel = useElapsedLabel(workout.startedAt, active);
+  // Phase 5F-2: COMPLETED-only, derived entirely from `workout` (already carries both the Recommendation
+  // Target snapshot and the actual Sets — see queries.ts#getWorkout) — no extra fetch, and the same result
+  // whether this is a just-finished Workout or one reopened later from History.
+  const recommendationEvaluations = workout.status === "COMPLETED" ? evaluateWorkoutRecommendations(workout) : {};
+  const recommendationSummary = summarizeWorkoutRecommendationEvaluation(Object.values(recommendationEvaluations));
+  const recommendationEntries: Array<{ id: string; name: string; evaluation: RecommendedExerciseEvaluation }> = workout.exercises.flatMap((exercise) => {
+    const evaluation = recommendationEvaluations[exercise.id];
+    return evaluation ? [{ id: exercise.id, name: exercise.name, evaluation }] : [];
+  });
   async function run(operation: () => Promise<ActionResult<WorkoutDTO>>, onSuccess?: (data: WorkoutDTO, next: Record<string, Row[]>) => void) {
     if (pending) return;
     setPending(true); setError("");
@@ -189,6 +201,8 @@ export function WorkoutEditor({ initialWorkout, availableExercises, previousPerf
           }}>終了する</button>}
         </div>
       </div>
+
+      {recommendationSummary.totalExercises > 0 && <RecommendationResultCard summary={recommendationSummary} entries={recommendationEntries} />}
 
       {workout.exercises.length === 0 && <div className="rounded-2xl border border-dashed border-slate-300 bg-white/60 px-4 py-8 text-center text-sm text-slate-400">
         種目はまだありません。下から追加してください。
