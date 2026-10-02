@@ -5,13 +5,14 @@ import * as actions from "@/app/(protected)/workouts/actions";
 import { workoutTitle } from "@/lib/workouts/calculations";
 import { summarizePerformance } from "@/lib/workouts/analytics";
 import { formatE1rm, formatE1rmDelta, formatVolume, formatVolumeDelta } from "@/lib/workouts/analytics-format";
+import { recommendedInitialWeightKg } from "@/lib/workouts/recommendation-target";
 import type { ActionResult, ExerciseAnalyticsDTO, ExerciseDTO, PreviousExercisePerformanceDTO, WorkoutDTO, SetDTO } from "@/lib/workouts/types";
 import { SetRow, SetRowHeader, type Row } from "./set-row";
 import { RecommendationTargetCard } from "./recommendation-target-card";
 
 const savedRow = (set: SetDTO): Row => ({ key: `set-${set.id}`, id: set.id, setNumber: set.setNumber,
   weightKg: set.weightKg, reps: String(set.reps), rir: set.rir ?? "", setType: set.setType });
-const blankRow = (number: number): Row => ({ key: `draft-${number}`, setNumber: number, weightKg: "", reps: "", rir: "", setType: "WORKING" });
+const blankRow = (number: number, weightKg = ""): Row => ({ key: `draft-${number}`, setNumber: number, weightKg, reps: "", rir: "", setType: "WORKING" });
 function reconcile(workout: WorkoutDTO, previous: Record<string, Row[]> = {}): Record<string, Row[]> {
   return Object.fromEntries(workout.exercises.map((exercise) => {
     const before = previous[exercise.id];
@@ -22,7 +23,10 @@ function reconcile(workout: WorkoutDTO, previous: Record<string, Row[]> = {}): R
       if (drafts) rows.push(...drafts);
       else {
         const maximum = Math.max(0, ...rows.map((row) => row.setNumber));
-        for (let i = 1; i <= Math.max(1, 3 - exercise.sets.length); i++) rows.push(blankRow(maximum + i));
+        for (let i = 1; i <= Math.max(1, 3 - exercise.sets.length); i++) {
+          const setNumber = maximum + i;
+          rows.push(blankRow(setNumber, recommendedInitialWeightKg(setNumber, exercise.recommendationTarget?.targetWeightKg ?? null)));
+        }
       }
     }
     return [exercise.id, rows.sort((a, b) => a.setNumber - b.setNumber)];
