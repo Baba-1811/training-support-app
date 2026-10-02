@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchRecommendationTarget, type PlanExerciseSnapshot } from "@/lib/workouts/recommendation-target";
+import { matchRecommendationTarget, recommendedInitialWeightKg, type PlanExerciseSnapshot } from "@/lib/workouts/recommendation-target";
 
 const benchPressId = "11111111-1111-4111-8111-111111111111";
 const squatId = "22222222-2222-4222-8222-222222222222";
@@ -46,5 +46,28 @@ describe("matchRecommendationTarget", () => {
   it("refuses the match (defensively) when the order lines up but the exerciseId does not", () => {
     const plans = [planExercise({ exerciseId: benchPressId, exerciseOrder: 1 })];
     expect(matchRecommendationTarget({ exerciseId: squatId, exerciseOrder: 1 }, plans)).toBeNull();
+  });
+});
+
+describe("recommendedInitialWeightKg (Phase 5E-2 Set input default)", () => {
+  it("proposes the target weight for Set 1 (string, matching the input's own value type)", () => {
+    expect(recommendedInitialWeightKg(1, 60)).toBe("60");
+  });
+
+  it("keeps decimal weights exact", () => {
+    expect(recommendedInitialWeightKg(1, 62.5)).toBe("62.5");
+  });
+
+  it("never invents a weight (e.g. 0) when targetWeightKg is null (BODYWEIGHT etc.)", () => {
+    expect(recommendedInitialWeightKg(1, null)).toBe("");
+  });
+
+  it("is blank for a normal Workout with no Recommendation Target at all", () => {
+    expect(recommendedInitialWeightKg(1, null)).toBe("");
+  });
+
+  it("never proposes a value for Set 2 or later, even when a target weight exists", () => {
+    expect(recommendedInitialWeightKg(2, 60)).toBe("");
+    expect(recommendedInitialWeightKg(3, 60)).toBe("");
   });
 });

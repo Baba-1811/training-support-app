@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  formatRecommendationRepsAndSets, formatRecommendationRest, formatRecommendationWeight, recommendationTargetLabel,
+  formatRecommendationRepsAndSets, formatRecommendationRepsGuide, formatRecommendationRest, formatRecommendationWeight,
+  recommendationTargetLabel,
 } from "@/lib/workouts/recommendation-target-format";
 import type { WorkoutRecommendationTargetDTO } from "@/lib/workouts/types";
 
@@ -35,6 +36,25 @@ describe("formatRecommendationRepsAndSets", () => {
   it("shows the one rep bound that exists when only one side is set", () => {
     expect(formatRecommendationRepsAndSets(target({ targetRepsMin: null, targetRepsMax: 12 }))).toBe("12回 × 3セット");
     expect(formatRecommendationRepsAndSets(target({ targetRepsMin: 8, targetRepsMax: null }))).toBe("8回 × 3セット");
+  });
+});
+
+describe("formatRecommendationRepsGuide (Phase 5E-2 reps input placeholder, never an actual value)", () => {
+  it("shows a range guide when min and max differ", () => {
+    expect(formatRecommendationRepsGuide(target({ targetRepsMin: 8, targetRepsMax: 12 }))).toBe("目安 8–12");
+  });
+
+  it("collapses to a single number when min and max are equal", () => {
+    expect(formatRecommendationRepsGuide(target({ targetRepsMin: 10, targetRepsMax: 10 }))).toBe("目安 10");
+  });
+
+  it("is null (no guide) when reps are entirely absent", () => {
+    expect(formatRecommendationRepsGuide(target({ targetRepsMin: null, targetRepsMax: null }))).toBeNull();
+  });
+
+  it("shows the one rep bound that exists when only one side is set", () => {
+    expect(formatRecommendationRepsGuide(target({ targetRepsMin: null, targetRepsMax: 12 }))).toBe("目安 12");
+    expect(formatRecommendationRepsGuide(target({ targetRepsMin: 8, targetRepsMax: null }))).toBe("目安 8");
   });
 });
 
