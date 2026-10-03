@@ -249,12 +249,18 @@ describe("getTodayRecommendation", () => {
       mocks.recommendWorkout.mockReturnValue({ kind: "REST", recommendationReason: "test" });
     });
 
+    // Phase 5F-4: the two calls to prisma.workoutExercise.findMany (lastTrainedAtByMuscle's plain query vs.
+    // this Phase's candidate query) are now disambiguated by `where.exerciseId` — the no-longer-present
+    // `distinct` option used to tell them apart before this Phase removed it (see queries.ts's own comment on
+    // why: validity must be decided across ALL candidate rows, not just a pre-narrowed "latest one").
+    const isCandidateQuery = (args: { where?: { exerciseId?: unknown } }) => args.where?.exerciseId !== undefined;
+
     it("AB/AC: scopes the lookup to the given userId, COMPLETED sessions, and Recommendation-linked (workoutPlanId not null) only", async () => {
-      mocks.workoutExercise.findMany.mockImplementation((args: { distinct?: unknown }) => Promise.resolve(args.distinct ? [] : []));
+      mocks.workoutExercise.findMany.mockImplementation((args: { where?: { exerciseId?: unknown } }) => Promise.resolve(isCandidateQuery(args) ? [] : []));
       await getTodayRecommendationForUser(owner);
-      const distinctCall = mocks.workoutExercise.findMany.mock.calls.find((call) => call[0].distinct)![0];
-      expect(distinctCall.where.workoutSession).toMatchObject({ userId: owner, status: "COMPLETED", workoutPlanId: { not: null } });
-      expect(distinctCall.where.workoutSession.userId).not.toBe(otherUser);
+      const candidateCall = mocks.workoutExercise.findMany.mock.calls.find((call) => isCandidateQuery(call[0]))![0];
+      expect(candidateCall.where.workoutSession).toMatchObject({ userId: owner, status: "COMPLETED", workoutPlanId: { not: null } });
+      expect(candidateCall.where.workoutSession.userId).not.toBe(otherUser);
     });
 
     it("query count is fixed at 2 extra queries (workoutPlanExercise + workoutSet), not proportional to candidate count", async () => {
@@ -262,8 +268,10 @@ describe("getTodayRecommendation", () => {
         { id: benchPressId, name: "Bench Press", equipmentType: "BARBELL", weightIncrementKg: null, exerciseMuscles: [] },
         { id: squatId, name: "Squat", equipmentType: "BARBELL", weightIncrementKg: null, exerciseMuscles: [] },
       ]);
-      mocks.workoutExercise.findMany.mockImplementation((args: { distinct?: unknown }) => Promise.resolve(
-        args.distinct ? [{ id: "we-1", exerciseId: benchPressId, exerciseOrder: 1, workoutSession: { workoutPlanId } }] : [],
+      mocks.workoutExercise.findMany.mockImplementation((args: { where?: { exerciseId?: unknown } }) => Promise.resolve(
+        isCandidateQuery(args)
+          ? [{ id: "we-1", exerciseId: benchPressId, exerciseOrder: 1, workoutSession: { startedAt: new Date("2026-09-28T00:00:00Z"), workoutPlanId } }]
+          : [],
       ));
       mocks.workoutPlanExercise.findMany.mockResolvedValue([
         { workoutPlanId, exerciseId: benchPressId, exerciseOrder: 1, targetWeightKg: { toString: () => "60" }, targetRepsMin: 8, targetRepsMax: 12, targetSets: 3, restSeconds: 90 },
@@ -284,10 +292,43 @@ describe("getTodayRecommendation", () => {
     });
 
     it("short-circuits to 0 extra queries when there is no Recommendation-linked history at all", async () => {
-      mocks.workoutExercise.findMany.mockImplementation((args: { distinct?: unknown }) => Promise.resolve(args.distinct ? [] : []));
+      mocks.workoutExercise.findMany.mockImplementation((args: { where?: { exerciseId?: unknown } }) => Promise.resolve(isCandidateQuery(args) ? [] : []));
       await getTodayRecommendationForUser(owner);
       expect(mocks.workoutPlanExercise.findMany).not.toHaveBeenCalled();
       expect(mocks.workoutSet.findMany).not.toHaveBeenCalled();
+    });
+
+    // Query count test (section 34 of the brief): the Phase 5F-4 candidate query fetches EVERY
+    // Recommendation-linked COMPLETED WorkoutExercise per candidate Exercise (never pre-narrowed to "the
+    // latest one"), so this confirms that widening does not turn into per-Exercise query growth — still exactly
+    // 3 total queries (candidates, plans, sets), regardless of how many candidate Exercises there are.
+    it.each([1, 5, 10])("stays at exactly 3 total queries (candidates/plans/sets) with %i candidate Exercises, each with Recommendation history", async (count) => {
+      const candidateExercises = Array.from({ length: count }, (_, i) => ({
+        id: `exercise-${i}`, name: `Exercise ${i}`, equipmentType: "BARBELL", weightIncrementKg: null, exerciseMuscles: [],
+      }));
+      const candidateRows = Array.from({ length: count }, (_, i) => ({
+        id: `we-${i}`, exerciseId: `exercise-${i}`, exerciseOrder: 1, workoutSession: { startedAt: new Date("2026-09-28T00:00:00Z"), workoutPlanId: `plan-${i}` },
+      }));
+      const planRows = Array.from({ length: count }, (_, i) => ({
+        workoutPlanId: `plan-${i}`, exerciseId: `exercise-${i}`, exerciseOrder: 1,
+        targetWeightKg: { toString: () => "60" }, targetRepsMin: 8, targetRepsMax: 12, targetSets: 3, restSeconds: 90,
+      }));
+      const setRows = Array.from({ length: count }, (_, i) => (
+        { workoutExerciseId: `we-${i}`, setNumber: 1, weightKg: { toString: () => "60" }, reps: 10, setType: "WORKING", completed: true }
+      ));
+
+      mocks.exercise.findMany.mockResolvedValue(candidateExercises);
+      mocks.workoutExercise.findMany.mockImplementation((args: { where?: { exerciseId?: unknown } }) => Promise.resolve(isCandidateQuery(args) ? candidateRows : []));
+      mocks.workoutPlanExercise.findMany.mockResolvedValue(planRows);
+      mocks.workoutSet.findMany.mockResolvedValue(setRows);
+
+      await getTodayRecommendationForUser(owner);
+
+      // One call for lastTrainedAtByMuscle + one for the candidate query = 2, regardless of candidate count.
+      expect(mocks.workoutExercise.findMany).toHaveBeenCalledTimes(2);
+      expect(mocks.workoutPlanExercise.findMany).toHaveBeenCalledTimes(1);
+      expect(mocks.workoutSet.findMany).toHaveBeenCalledTimes(1);
+      expect(Object.keys(mocks.recommendWorkout.mock.calls[0][0].previousRecommendationByExerciseId)).toHaveLength(count);
     });
   });
 });
