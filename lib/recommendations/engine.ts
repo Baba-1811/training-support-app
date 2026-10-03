@@ -3,7 +3,7 @@ import {
   categoryScore, daysSince, toJstDateOnly, recencyBucket, isPrimarySorenessExcluded, secondarySorenessPenalty,
   isReducedLoad, resolveMaxExercises, type RecencyBucket,
 } from "./rules";
-import { resolveTargetWeightKg, resolveTargetReps, resolveTargetSets, resolveRestSeconds } from "./target";
+import { resolveWeightTarget, resolveTargetReps, resolveTargetSets, resolveRestSeconds } from "./target";
 import { buildWorkoutReason, buildRestReason } from "./reasons";
 import type {
   RecommendationContext, RecommendationResult, RecommendedExercise, ExerciseCandidateDTO, EquipmentType,
@@ -224,13 +224,16 @@ function buildRecommendedExercise(
   const previous = context.previousPerformanceByExerciseId[selection.exercise.exerciseId] ?? null;
   const previousRecommendation = context.previousRecommendationByExerciseId[selection.exercise.exerciseId];
   const { targetRepsMin, targetRepsMax } = resolveTargetReps(previous);
+  const { targetWeightKg, explanation: weightTargetExplanation } = resolveWeightTarget(
+    selection.exercise.equipmentType, previous,
+    previousRecommendation && { ...previousRecommendation, weightIncrementKg: selection.exercise.weightIncrementKg },
+  );
   return {
     exerciseId: selection.exercise.exerciseId,
     exerciseName: selection.exercise.exerciseName,
     category: selection.category,
-    targetWeightKg: resolveTargetWeightKg(selection.exercise.equipmentType, previous, previousRecommendation && {
-      ...previousRecommendation, weightIncrementKg: selection.exercise.weightIncrementKg,
-    }),
+    targetWeightKg,
+    weightTargetExplanation,
     targetRepsMin,
     targetRepsMax,
     targetSets: resolveTargetSets(reducedLoad),

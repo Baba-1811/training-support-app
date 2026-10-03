@@ -1,6 +1,7 @@
 import type { CategorySlug } from "@/lib/exercises/categories";
 import type { ConditionRecommendationInputDTO } from "@/lib/conditions/types";
 import type { PreviousExercisePerformanceDTO } from "@/lib/workouts/types";
+import type { RecommendedExerciseStatus } from "@/lib/workouts/recommendation-evaluation";
 import type { ProgressionDecision } from "./progression";
 
 // Mirrors the Prisma `EquipmentType` enum values as a plain string union, so this pure layer never imports the
@@ -42,6 +43,26 @@ export type ExerciseCandidateDTO = {
 export type PreviousRecommendationContext = {
   previousTargetWeightKg: number | null;
   progressionDecision: ProgressionDecision;
+  // Phase 5F-3C: the Phase 5F-1 evaluation status this ProgressionDecision came from. ACHIEVED and PARTIAL both
+  // decide "MAINTAIN" (same ProgressionDecision value), but Explainability (target.ts#resolveWeightTarget)
+  // still needs to tell them apart to word the explanation accurately — decision alone can't.
+  previousEvaluationStatus: RecommendedExerciseStatus;
+};
+
+// Phase 5F-3C: machine-readable "why is targetWeightKg this value" metadata, produced by the SAME resolution
+// that computes targetWeightKg itself (target.ts#resolveWeightTarget) — never recomputed separately, so the
+// two can never drift apart. No Japanese text lives here; lib/recommendations/display.ts turns this into UI
+// copy.
+export type WeightTargetReason = "PROGRESSED" | "MAINTAINED" | "LATEST_PERFORMANCE" | "NO_HISTORY" | "NO_WEIGHT_TARGET";
+
+export type WeightTargetExplanation = {
+  reason: WeightTargetReason;
+  // The previous Recommendation's own planned target, never the actual's incidental weight (null for every
+  // reason except PROGRESSED/MAINTAINED, which are the only two with a previous Recommendation to point back to).
+  previousTargetWeightKg: number | null;
+  weightIncrementKg: number | null;
+  progressionDecision: ProgressionDecision | null;
+  previousEvaluationStatus: RecommendedExerciseStatus | null;
 };
 
 // Everything the pure engine needs, and nothing it can reach into a database for. `today` is the JST calendar
@@ -73,6 +94,9 @@ export type RecommendedExercise = {
   category: CategorySlug;
   // null = no basis to propose a number (no history yet, or a BODYWEIGHT exercise). Never guessed.
   targetWeightKg: number | null;
+  // Phase 5F-3C: why targetWeightKg is this value, for Home to explain it. Always present (even
+  // NO_HISTORY/NO_WEIGHT_TARGET are meaningful explanations, not an absence of one).
+  weightTargetExplanation: WeightTargetExplanation;
   targetRepsMin: number;
   targetRepsMax: number;
   targetSets: number;

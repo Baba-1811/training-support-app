@@ -1,4 +1,4 @@
-import type { EquipmentType, PreviousRecommendationContext } from "./types";
+import type { EquipmentType, PreviousRecommendationContext, WeightTargetExplanation } from "./types";
 import type { PreviousExercisePerformanceDTO } from "@/lib/workouts/types";
 import type { ProgressionDecision } from "./progression";
 
@@ -76,27 +76,58 @@ export function resolveProgressedTargetWeightKg(args: {
   return previousTargetWeightKg;
 }
 
-// Priority: (1) BODYWEIGHT is always null. (2) A "valid" previous Recommendation — one whose own target weight
-// was itself non-null — progresses from that PLANNED number via resolveProgressedTargetWeightKg, never from
-// `previous`'s actual weight (Phase 5F-3B's core rule: planned-vs-actual evaluation already happened upstream;
-// this function only applies its resulting decision). (3) Otherwise, the pre-5F-3B fallback: the heaviest
-// actually-lifted weight, held. A previousRecommendation whose own previousTargetWeightKg is null (e.g. the
-// Exercise had no history yet when that earlier Recommendation was built) is treated the same as "no previous
-// Recommendation" here, so a user who has since actually performed the Exercise still gets the (2)-skipping,
-// (3) latest-performance number instead of being stuck at null.
+// Phase 5F-3C: no-previous-Recommendation-context fields, shared by every branch below that has no previous
+// Recommendation to report (so each only has to state what differs: `reason` and, for LATEST_PERFORMANCE,
+// nothing else).
+const NO_PREVIOUS_RECOMMENDATION = { previousTargetWeightKg: null, weightIncrementKg: null, progressionDecision: null, previousEvaluationStatus: null } as const;
+
+// Phase 5F-3C: targetWeightKg and its explanation, from ONE resolution — never two separately-maintained
+// computations that could drift. `reason` is derived from comparing the resulting targetWeightKg to the
+// previous one, not from re-switching on progressionDecision: this is what makes INCREASE+increment=null (and
+// the unreachable-in-v1 DECREASE) fall out as MAINTAINED automatically, with no special-casing by decision name.
+//
+// Priority: (1) BODYWEIGHT is always null/NO_WEIGHT_TARGET. (2) A "valid" previous Recommendation — one whose
+// own target weight was itself non-null — progresses from that PLANNED number via
+// resolveProgressedTargetWeightKg, never from `previous`'s actual weight (Phase 5F-3B's core rule: planned-vs-
+// actual evaluation already happened upstream; this only applies its resulting decision). (3) Otherwise, the
+// pre-5F-3B latest-performance fallback. A previousRecommendation whose own previousTargetWeightKg is null
+// (e.g. the Exercise had no history yet when that earlier Recommendation was built) is treated the same as "no
+// previous Recommendation" here, so a user who has since actually performed the Exercise still gets the
+// (2)-skipping, (3) latest-performance number instead of being stuck at null.
+export function resolveWeightTarget(
+  equipmentType: EquipmentType,
+  previous: PreviousExercisePerformanceDTO | null | undefined,
+  previousRecommendation?: (PreviousRecommendationContext & { weightIncrementKg: number | null }) | null,
+): { targetWeightKg: number | null; explanation: WeightTargetExplanation } {
+  // BODYWEIGHT never gets a weight target, even if history has a (0kg) weight recorded — "null" means "no
+  // meaningful number", not "0". Weight recommendation itself does not apply, which NO_HISTORY would misstate
+  // as "data is missing" rather than "not applicable".
+  if (equipmentType === "BODYWEIGHT") {
+    return { targetWeightKg: null, explanation: { reason: "NO_WEIGHT_TARGET", ...NO_PREVIOUS_RECOMMENDATION } };
+  }
+  if (previousRecommendation && previousRecommendation.previousTargetWeightKg !== null) {
+    const { previousTargetWeightKg, progressionDecision, weightIncrementKg, previousEvaluationStatus } = previousRecommendation;
+    const targetWeightKg = resolveProgressedTargetWeightKg(previousRecommendation);
+    const progressed = targetWeightKg !== null && targetWeightKg > previousTargetWeightKg;
+    return {
+      targetWeightKg,
+      explanation: { reason: progressed ? "PROGRESSED" : "MAINTAINED", previousTargetWeightKg, weightIncrementKg, progressionDecision, previousEvaluationStatus },
+    };
+  }
+  if (!previous || previous.sets.length === 0) {
+    return { targetWeightKg: null, explanation: { reason: "NO_HISTORY", ...NO_PREVIOUS_RECOMMENDATION } };
+  }
+  return { targetWeightKg: maxCompletedWeightKg(previous), explanation: { reason: "LATEST_PERFORMANCE", ...NO_PREVIOUS_RECOMMENDATION } };
+}
+
+// Thin wrapper kept for every existing caller/test that only needs the number — same signature and behavior as
+// before Phase 5F-3C, since it now simply reads the one field it always returned out of resolveWeightTarget.
 export function resolveTargetWeightKg(
   equipmentType: EquipmentType,
   previous: PreviousExercisePerformanceDTO | null | undefined,
   previousRecommendation?: (PreviousRecommendationContext & { weightIncrementKg: number | null }) | null,
 ): number | null {
-  // BODYWEIGHT never gets a weight target, even if history has a (0kg) weight recorded — "null" means "no
-  // meaningful number", not "0".
-  if (equipmentType === "BODYWEIGHT") return null;
-  if (previousRecommendation && previousRecommendation.previousTargetWeightKg !== null) {
-    return resolveProgressedTargetWeightKg(previousRecommendation);
-  }
-  if (!previous || previous.sets.length === 0) return null;
-  return maxCompletedWeightKg(previous);
+  return resolveWeightTarget(equipmentType, previous, previousRecommendation).targetWeightKg;
 }
 
 // ============================================================

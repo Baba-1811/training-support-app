@@ -119,7 +119,11 @@ export function reducePreviousRecommendationProgress(
       }));
     const evaluation = evaluateRecommendedExercise({ target, sets });
     if (!evaluation) continue; // unreachable (target is non-null here); kept so a future signature change fails safe.
-    result[row.exerciseId] = { previousTargetWeightKg: target.targetWeightKg, progressionDecision: decideProgression(evaluation).decision };
+    result[row.exerciseId] = {
+      previousTargetWeightKg: target.targetWeightKg,
+      progressionDecision: decideProgression(evaluation).decision,
+      previousEvaluationStatus: evaluation.status,
+    };
   }
   return result;
 }
