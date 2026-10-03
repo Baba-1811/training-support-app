@@ -279,7 +279,7 @@ describe("getTodayRecommendation", () => {
       expect(mocks.workoutPlanExercise.findMany).toHaveBeenCalledTimes(1);
       expect(mocks.workoutSet.findMany).toHaveBeenCalledTimes(1);
       expect(mocks.recommendWorkout).toHaveBeenCalledWith(expect.objectContaining({
-        previousRecommendationByExerciseId: { [benchPressId]: { previousTargetWeightKg: 60, progressionDecision: "INCREASE" } },
+        previousRecommendationByExerciseId: { [benchPressId]: { previousTargetWeightKg: 60, progressionDecision: "INCREASE", previousEvaluationStatus: "EXCEEDED" } },
       }));
     });
 

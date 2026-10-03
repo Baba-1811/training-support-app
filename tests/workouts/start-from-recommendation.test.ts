@@ -36,11 +36,13 @@ const workoutRecommendation: RecommendationResult = {
     {
       exerciseId: benchPressId, exerciseName: "Bench Press", category: "chest",
       targetWeightKg: 60, targetRepsMin: 8, targetRepsMax: 10, targetSets: 3, restSeconds: 90,
+      weightTargetExplanation: { reason: "LATEST_PERFORMANCE", previousTargetWeightKg: null, weightIncrementKg: null, progressionDecision: null, previousEvaluationStatus: null },
       secondarySorenessNoted: false,
     },
     {
       exerciseId: squatId, exerciseName: "Squat", category: "legs",
       targetWeightKg: null, targetRepsMin: 8, targetRepsMax: 12, targetSets: 3, restSeconds: 75,
+      weightTargetExplanation: { reason: "NO_HISTORY", previousTargetWeightKg: null, weightIncrementKg: null, progressionDecision: null, previousEvaluationStatus: null },
       secondarySorenessNoted: true,
     },
   ],

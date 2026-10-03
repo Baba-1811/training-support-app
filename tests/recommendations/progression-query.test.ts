@@ -32,7 +32,7 @@ describe("reducePreviousRecommendationProgress", () => {
       [planRow()],
       [set("we-1", 1, 65, 10), set("we-1", 2, 60, 10), set("we-1", 3, 60, 10)],
     );
-    expect(result[benchPressId]).toEqual({ previousTargetWeightKg: 60, progressionDecision: "INCREASE" });
+    expect(result[benchPressId]).toEqual({ previousTargetWeightKg: 60, progressionDecision: "INCREASE", previousEvaluationStatus: "EXCEEDED" });
   });
 
   it("X. duplicate Exercise (two rows in the same session) still pairs each row's own target with its own actual via exerciseOrder", () => {
@@ -75,7 +75,7 @@ describe("reducePreviousRecommendationProgress", () => {
       [set("we-1", 1, 20, 20, { setType: "WARMUP" }), set("we-1", 2, 60, 10), set("we-1", 3, 60, 10), set("we-1", 4, 60, 10)],
     );
     // Only 3 completed WORKING sets count toward the required 3 -> ACHIEVED (not EXCEEDED from the WARMUP row).
-    expect(result[benchPressId]).toEqual({ previousTargetWeightKg: 60, progressionDecision: "MAINTAIN" });
+    expect(result[benchPressId]).toEqual({ previousTargetWeightKg: 60, progressionDecision: "MAINTAIN", previousEvaluationStatus: "ACHIEVED" });
   });
 
   it("AA. completed=false sets are excluded -> NOT_PERFORMED when the only sets are unconfirmed", () => {
@@ -84,7 +84,7 @@ describe("reducePreviousRecommendationProgress", () => {
       [planRow()],
       [set("we-1", 1, 60, 10, { completed: false })],
     );
-    expect(result[benchPressId]).toEqual({ previousTargetWeightKg: 60, progressionDecision: "INSUFFICIENT_DATA" });
+    expect(result[benchPressId]).toEqual({ previousTargetWeightKg: 60, progressionDecision: "INSUFFICIENT_DATA", previousEvaluationStatus: "NOT_PERFORMED" });
   });
 
   it("is deterministic: same input always produces the same (deep-equal) result", () => {

@@ -211,7 +211,7 @@ describe("S-W. Weight progression integration", () => {
     const context = makeContext({
       exercises: [benchPress()],
       previousPerformanceByExerciseId: { "Bench Press": actualHigherThanPlanned },
-      previousRecommendationByExerciseId: { "Bench Press": { previousTargetWeightKg: 60, progressionDecision: "INCREASE" } },
+      previousRecommendationByExerciseId: { "Bench Press": { previousTargetWeightKg: 60, progressionDecision: "INCREASE", previousEvaluationStatus: "EXCEEDED" } },
     });
     const result = asWorkout(recommendWorkout(context));
     expect(result.exercises[0].targetWeightKg).toBe(62.5);
@@ -222,7 +222,7 @@ describe("S-W. Weight progression integration", () => {
     const context = makeContext({
       exercises: [benchPress()],
       previousPerformanceByExerciseId: { "Bench Press": actualHigherThanPlanned },
-      previousRecommendationByExerciseId: { "Bench Press": { previousTargetWeightKg: 60, progressionDecision: "MAINTAIN" } },
+      previousRecommendationByExerciseId: { "Bench Press": { previousTargetWeightKg: 60, progressionDecision: "MAINTAIN", previousEvaluationStatus: "ACHIEVED" } },
     });
     expect(asWorkout(recommendWorkout(context)).exercises[0].targetWeightKg).toBe(60);
   });
@@ -230,7 +230,7 @@ describe("S-W. Weight progression integration", () => {
   it("P. PARTIAL (-> MAINTAIN) -> holds the previous planned target (60), never auto-decreases to 55", () => {
     const context = makeContext({
       exercises: [benchPress()],
-      previousRecommendationByExerciseId: { "Bench Press": { previousTargetWeightKg: 60, progressionDecision: "MAINTAIN" } },
+      previousRecommendationByExerciseId: { "Bench Press": { previousTargetWeightKg: 60, progressionDecision: "MAINTAIN", previousEvaluationStatus: "PARTIAL" } },
     });
     expect(asWorkout(recommendWorkout(context)).exercises[0].targetWeightKg).toBe(60);
   });
@@ -238,7 +238,7 @@ describe("S-W. Weight progression integration", () => {
   it("Q. NOT_PERFORMED (-> INSUFFICIENT_DATA) -> holds the previous planned target (60)", () => {
     const context = makeContext({
       exercises: [benchPress()],
-      previousRecommendationByExerciseId: { "Bench Press": { previousTargetWeightKg: 60, progressionDecision: "INSUFFICIENT_DATA" } },
+      previousRecommendationByExerciseId: { "Bench Press": { previousTargetWeightKg: 60, progressionDecision: "INSUFFICIENT_DATA", previousEvaluationStatus: "NOT_PERFORMED" } },
     });
     expect(asWorkout(recommendWorkout(context)).exercises[0].targetWeightKg).toBe(60);
   });
@@ -246,7 +246,7 @@ describe("S-W. Weight progression integration", () => {
   it("R2. increment=null + EXCEEDED -> holds the previous planned target (60), never guesses an increment", () => {
     const context = makeContext({
       exercises: [makeExercise({ name: "Bench Press", equipmentType: "BARBELL", primaryMuscles: ["Chest"], weightIncrementKg: null })],
-      previousRecommendationByExerciseId: { "Bench Press": { previousTargetWeightKg: 60, progressionDecision: "INCREASE" } },
+      previousRecommendationByExerciseId: { "Bench Press": { previousTargetWeightKg: 60, progressionDecision: "INCREASE", previousEvaluationStatus: "EXCEEDED" } },
     });
     expect(asWorkout(recommendWorkout(context)).exercises[0].targetWeightKg).toBe(60);
   });
@@ -254,7 +254,7 @@ describe("S-W. Weight progression integration", () => {
   it("S. BODYWEIGHT + EXCEEDED -> targetWeightKg stays null (no weighted-bodyweight progression)", () => {
     const context = makeContext({
       exercises: [makeExercise({ name: "Calf Raise", equipmentType: "BODYWEIGHT", primaryMuscles: ["Calves"], weightIncrementKg: null })],
-      previousRecommendationByExerciseId: { "Calf Raise": { previousTargetWeightKg: null, progressionDecision: "INCREASE" } },
+      previousRecommendationByExerciseId: { "Calf Raise": { previousTargetWeightKg: null, progressionDecision: "INCREASE", previousEvaluationStatus: "EXCEEDED" } },
     });
     expect(asWorkout(recommendWorkout(context)).exercises[0].targetWeightKg).toBeNull();
   });
@@ -275,7 +275,7 @@ describe("S-W. Weight progression integration", () => {
   it("AD. EXCEEDED progression still composes with a normal (non-reduced) Condition's targetSets", () => {
     const context = makeContext({
       exercises: [benchPress()],
-      previousRecommendationByExerciseId: { "Bench Press": { previousTargetWeightKg: 60, progressionDecision: "INCREASE" } },
+      previousRecommendationByExerciseId: { "Bench Press": { previousTargetWeightKg: 60, progressionDecision: "INCREASE", previousEvaluationStatus: "EXCEEDED" } },
     });
     const exercise = asWorkout(recommendWorkout(context)).exercises[0];
     expect(exercise.targetWeightKg).toBe(62.5);
@@ -286,7 +286,7 @@ describe("S-W. Weight progression integration", () => {
     const context = makeContext({
       exercises: [benchPress()],
       condition: { ...makeContext().condition, sleepHours: "5" },
-      previousRecommendationByExerciseId: { "Bench Press": { previousTargetWeightKg: 60, progressionDecision: "INCREASE" } },
+      previousRecommendationByExerciseId: { "Bench Press": { previousTargetWeightKg: 60, progressionDecision: "INCREASE", previousEvaluationStatus: "EXCEEDED" } },
     });
     const exercise = asWorkout(recommendWorkout(context)).exercises[0];
     expect(exercise.targetWeightKg).toBe(62.5); // weight progression unaffected by today's Condition
