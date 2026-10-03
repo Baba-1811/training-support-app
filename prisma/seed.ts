@@ -56,6 +56,11 @@ async function main() {
   // Exercise
   // ============================================================
 
+  // weightIncrementKg (Phase 5F-3B): the Recommendation target weight progression step for this Exercise. null
+  // means LoopLift has no safe basis to auto-increase it, never "0kg" — see lib/recommendations/target.ts.
+  // Set per-Exercise, not derived from equipmentType alone: Shoulder Press (DUMBBELL) is left null because
+  // dumbbell availability/step size is not something this seed can state with the same confidence as the
+  // explicit values below; BODYWEIGHT Exercises are always null (no weight target exists to progress).
   const exercises = [
     {
       name: "Bench Press",
@@ -64,6 +69,7 @@ async function main() {
         "ベンチに仰向けになり、肩甲骨を寄せた状態でバーベルを胸付近まで下ろし、押し上げる。",
       tips: "肩がすくまないようにし、足・背中・肩を安定させる。",
       equipmentType: EquipmentType.BARBELL,
+      weightIncrementKg: 2.5,
     },
     {
       name: "Squat",
@@ -72,6 +78,7 @@ async function main() {
         "バーベルを担ぎ、姿勢を保ちながら膝と股関節を曲げてしゃがみ、立ち上がる。",
       tips: "膝とつま先の向きをそろえ、腰が過度に丸まらないようにする。",
       equipmentType: EquipmentType.BARBELL,
+      weightIncrementKg: 2.5,
     },
     {
       name: "Deadlift",
@@ -80,6 +87,7 @@ async function main() {
         "床のバーベルを握り、背中を安定させながら股関節と膝を伸ばして持ち上げる。",
       tips: "バーを身体から離しすぎず、腰だけで引かない。",
       equipmentType: EquipmentType.BARBELL,
+      weightIncrementKg: 2.5,
     },
     {
       name: "Lat Pulldown",
@@ -88,6 +96,7 @@ async function main() {
         "バーを握り、胸を張った状態で鎖骨付近に向かって引き下ろす。",
       tips: "腕だけで引かず、肘を下方向へ動かす意識を持つ。",
       equipmentType: EquipmentType.MACHINE,
+      weightIncrementKg: 5,
     },
     {
       name: "Shoulder Press",
@@ -96,6 +105,7 @@ async function main() {
         "肩付近から重量を頭上方向へ押し上げ、コントロールしながら戻す。",
       tips: "腰を過度に反らさず、動作中は体幹を安定させる。",
       equipmentType: EquipmentType.DUMBBELL,
+      weightIncrementKg: null,
     },
     {
       name: "Dumbbell Curl",
@@ -104,6 +114,7 @@ async function main() {
         "ダンベルを持ち、肘の位置を大きく動かさずに前腕を持ち上げる。",
       tips: "反動を使わず、ゆっくり下ろす。",
       equipmentType: EquipmentType.DUMBBELL,
+      weightIncrementKg: 2,
     },
     {
       name: "Triceps Pushdown",
@@ -112,6 +123,7 @@ async function main() {
         "肘を身体の横に固定し、ケーブルを下方向へ押し下げる。",
       tips: "肩を動かしすぎず、肘の伸展を意識する。",
       equipmentType: EquipmentType.CABLE,
+      weightIncrementKg: 5,
     },
     {
       name: "Calf Raise",
@@ -120,6 +132,7 @@ async function main() {
         "かかとをゆっくり持ち上げ、つま先立ちになってから戻す。",
       tips: "反動を使わず、可動域を確保する。",
       equipmentType: EquipmentType.BODYWEIGHT,
+      weightIncrementKg: null,
     },
     {
       name: "Leg Press",
@@ -128,6 +141,7 @@ async function main() {
         "シートに深く座って足をプレートに置き、膝を曲げてゆっくり下ろしてから押し戻す。",
       tips: "膝を完全に伸ばし切らず、腰がシートから浮かないようにする。",
       equipmentType: EquipmentType.MACHINE,
+      weightIncrementKg: 5,
     },
     {
       name: "Crunch",
@@ -136,6 +150,7 @@ async function main() {
         "仰向けで膝を曲げ、肩甲骨が床から離れるまで上体を丸めて起こし、ゆっくり戻す。",
       tips: "首を引っ張らず、反動を使わずにお腹の収縮を意識する。",
       equipmentType: EquipmentType.BODYWEIGHT,
+      weightIncrementKg: null,
     },
   ];
 
