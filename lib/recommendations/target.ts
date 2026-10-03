@@ -1,5 +1,6 @@
-import type { EquipmentType } from "./types";
+import type { EquipmentType, PreviousRecommendationContext } from "./types";
 import type { PreviousExercisePerformanceDTO } from "@/lib/workouts/types";
+import type { ProgressionDecision } from "./progression";
 
 // PreviousExercisePerformanceDTO is itself `{ startedAt; sets } | null`; the local helpers below only ever run
 // after a null/undefined check, so they take the non-null shape directly instead of re-checking internally.
@@ -35,8 +36,8 @@ export function resolveRestSeconds(availableMinutes: number | null): number {
 // ============================================================
 // targetWeightKg
 // ============================================================
-// v1 never raises weight automatically: there is no plate-increment or per-equipment step size in the schema,
-// so "the heaviest completed WORKING set weight, held" is the only defensible number to propose.
+// Fallback only (no previous Recommendation to progress from): "the heaviest completed WORKING set weight,
+// held" — the only defensible number when there is nothing planned to compare against.
 function maxCompletedWeightKg(previous: PerformanceRecord): number | null {
   let max: number | null = null;
   for (const set of previous.sets) {
@@ -47,12 +48,53 @@ function maxCompletedWeightKg(previous: PerformanceRecord): number | null {
   return max;
 }
 
+// Decimal(6,2) is the column's scale (see prisma/schema.prisma#WorkoutPlanExercise.targetWeightKg): rounding
+// the sum to 2 decimal places here keeps the result exactly what Postgres will store, instead of occasionally
+// persisting a JS floating-point artifact (e.g. 57.15 + 2.5 as a non-terminating binary fraction).
+function roundToWeightScale(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+// Phase 5F-3B: previous PLANNED target (never the actual's incidental weight) + the Phase 5F-3A
+// ProgressionDecision -> next target. A pure, total function of its three inputs:
+// - previousTargetWeightKg=null (no previous plan, or a BODYWEIGHT Exercise) -> null; progression never
+//   invents a first number.
+// - INCREASE with a known weightIncrementKg -> previousTarget + increment, rounded to the DB's own scale.
+// - INCREASE with weightIncrementKg=null, or MAINTAIN/INSUFFICIENT_DATA/DECREASE in any case -> previousTarget
+//   held exactly. DECREASE has no v1 subtraction rule (see progression.ts); holding is the deliberate, safe
+//   behavior rather than guessing a decrement.
+export function resolveProgressedTargetWeightKg(args: {
+  previousTargetWeightKg: number | null;
+  progressionDecision: ProgressionDecision;
+  weightIncrementKg: number | null;
+}): number | null {
+  const { previousTargetWeightKg, progressionDecision, weightIncrementKg } = args;
+  if (previousTargetWeightKg === null) return null;
+  if (progressionDecision === "INCREASE" && weightIncrementKg !== null) {
+    return roundToWeightScale(previousTargetWeightKg + weightIncrementKg);
+  }
+  return previousTargetWeightKg;
+}
+
+// Priority: (1) BODYWEIGHT is always null. (2) A "valid" previous Recommendation — one whose own target weight
+// was itself non-null — progresses from that PLANNED number via resolveProgressedTargetWeightKg, never from
+// `previous`'s actual weight (Phase 5F-3B's core rule: planned-vs-actual evaluation already happened upstream;
+// this function only applies its resulting decision). (3) Otherwise, the pre-5F-3B fallback: the heaviest
+// actually-lifted weight, held. A previousRecommendation whose own previousTargetWeightKg is null (e.g. the
+// Exercise had no history yet when that earlier Recommendation was built) is treated the same as "no previous
+// Recommendation" here, so a user who has since actually performed the Exercise still gets the (2)-skipping,
+// (3) latest-performance number instead of being stuck at null.
 export function resolveTargetWeightKg(
-  equipmentType: EquipmentType, previous: PreviousExercisePerformanceDTO | null | undefined,
+  equipmentType: EquipmentType,
+  previous: PreviousExercisePerformanceDTO | null | undefined,
+  previousRecommendation?: (PreviousRecommendationContext & { weightIncrementKg: number | null }) | null,
 ): number | null {
   // BODYWEIGHT never gets a weight target, even if history has a (0kg) weight recorded — "null" means "no
   // meaningful number", not "0".
   if (equipmentType === "BODYWEIGHT") return null;
+  if (previousRecommendation && previousRecommendation.previousTargetWeightKg !== null) {
+    return resolveProgressedTargetWeightKg(previousRecommendation);
+  }
   if (!previous || previous.sets.length === 0) return null;
   return maxCompletedWeightKg(previous);
 }

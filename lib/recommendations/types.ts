@@ -1,6 +1,7 @@
 import type { CategorySlug } from "@/lib/exercises/categories";
 import type { ConditionRecommendationInputDTO } from "@/lib/conditions/types";
 import type { PreviousExercisePerformanceDTO } from "@/lib/workouts/types";
+import type { ProgressionDecision } from "./progression";
 
 // Mirrors the Prisma `EquipmentType` enum values as a plain string union, so this pure layer never imports the
 // Prisma client. Only the BODYWEIGHT value is actually branched on (target.ts), but the precise union catches
@@ -27,6 +28,20 @@ export type ExerciseCandidateDTO = {
   equipmentType: EquipmentType;
   isActive: boolean;
   muscles: readonly ExerciseMuscleLinkDTO[];
+  // Phase 5F-3B: this Exercise's Recommendation target-weight progression step (Exercise.weightIncrementKg).
+  // null = no safe basis to auto-increase it, never "0kg" — same convention as targetWeightKg itself.
+  weightIncrementKg: number | null;
+};
+
+// Phase 5F-3B: the previous Recommendation Target actually generated for this Exercise, plus the
+// ProgressionDecision computed by comparing it to what was actually performed (lib/workouts/
+// recommendation-evaluation.ts + lib/recommendations/progression.ts) — a plain data snapshot, not the decision
+// logic itself. Absent from RecommendationContext.previousRecommendationByExerciseId (not even undefined) means
+// "no valid previous Recommendation for this Exercise" (none exists, or it could not be matched/evaluated);
+// target.ts falls back to its existing latest-performance-based target in that case.
+export type PreviousRecommendationContext = {
+  previousTargetWeightKg: number | null;
+  progressionDecision: ProgressionDecision;
 };
 
 // Everything the pure engine needs, and nothing it can reach into a database for. `today` is the JST calendar
@@ -46,6 +61,10 @@ export type RecommendationContext = {
   // lib/workouts/queries.ts#getPreviousExercisePerformance 1:1 (Record<exerciseId, PreviousExercisePerformanceDTO>)
   // so Phase 5B can pass that existing query's result straight through without remapping.
   previousPerformanceByExerciseId: Readonly<Record<string, PreviousExercisePerformanceDTO>>;
+  // Phase 5F-3B: Exercise.id -> previous Recommendation Target + ProgressionDecision, for Exercises whose most
+  // recent Recommendation-linked COMPLETED Workout could be matched and evaluated. An Exercise absent here falls
+  // back to the existing latest-performance-based target (see target.ts#resolveTargetWeightKg).
+  previousRecommendationByExerciseId: Readonly<Record<string, PreviousRecommendationContext>>;
 };
 
 export type RecommendedExercise = {
