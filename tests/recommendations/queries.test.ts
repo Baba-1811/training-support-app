@@ -4,12 +4,16 @@ const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   exercise: { findMany: vi.fn() },
   workoutExercise: { findMany: vi.fn() },
+  workoutPlanExercise: { findMany: vi.fn() },
+  workoutSet: { findMany: vi.fn() },
   getTodayConditionForRecommendationForUser: vi.fn(),
   getLatestExercisePerformanceForUser: vi.fn(),
   recommendWorkout: vi.fn(),
 }));
 vi.mock("@/lib/auth/require-user", () => ({ requireUser: mocks.auth }));
-vi.mock("@/lib/prisma", () => ({ prisma: { exercise: mocks.exercise, workoutExercise: mocks.workoutExercise } }));
+vi.mock("@/lib/prisma", () => ({
+  prisma: { exercise: mocks.exercise, workoutExercise: mocks.workoutExercise, workoutPlanExercise: mocks.workoutPlanExercise, workoutSet: mocks.workoutSet },
+}));
 // getTodayRecommendation() now delegates to getTodayRecommendationForUser(), which calls the *ForUser variants
 // directly (no requireUser() of their own — see lib/recommendations/queries.ts's Auth call amplification fix).
 vi.mock("@/lib/conditions/queries", () => ({ getTodayConditionForRecommendationForUser: mocks.getTodayConditionForRecommendationForUser }));
@@ -31,6 +35,11 @@ const squatId = "33333333-3333-4333-8333-333333333333";
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.auth.mockResolvedValue({ id: owner });
+  // Phase 5F-3B: previous-recommendation-progress query defaults — most tests never reach it (they short-circuit
+  // before it's called, e.g. no Condition, or workoutExercise.findMany resolving []), but a default keeps any
+  // test that does reach it from crashing on an unset mock rather than exercising real behavior.
+  mocks.workoutPlanExercise.findMany.mockResolvedValue([]);
+  mocks.workoutSet.findMany.mockResolvedValue([]);
 });
 
 describe("listRecommendationCandidates", () => {
@@ -49,19 +58,27 @@ describe("listRecommendationCandidates", () => {
 
   it("preserves PRIMARY and SECONDARY roles, and maps every field to the ExerciseCandidateDTO shape", async () => {
     mocks.exercise.findMany.mockResolvedValue([{
-      id: benchPressId, name: "Bench Press", equipmentType: "BARBELL",
+      id: benchPressId, name: "Bench Press", equipmentType: "BARBELL", weightIncrementKg: { toString: () => "2.5" },
       exerciseMuscles: [
         { role: "PRIMARY", muscle: { name: "Chest", isActive: true } },
         { role: "SECONDARY", muscle: { name: "Triceps", isActive: true } },
       ],
     }]);
     expect(await listRecommendationCandidates()).toEqual([{
-      exerciseId: benchPressId, exerciseName: "Bench Press", equipmentType: "BARBELL", isActive: true,
+      exerciseId: benchPressId, exerciseName: "Bench Press", equipmentType: "BARBELL", isActive: true, weightIncrementKg: 2.5,
       muscles: [
         { muscleName: "Chest", role: "PRIMARY", muscleIsActive: true },
         { muscleName: "Triceps", role: "SECONDARY", muscleIsActive: true },
       ],
     }]);
+  });
+
+  it("keeps weightIncrementKg null rather than coercing it to 0", async () => {
+    mocks.exercise.findMany.mockResolvedValue([{
+      id: benchPressId, name: "Bench Press", equipmentType: "BODYWEIGHT", weightIncrementKg: null, exerciseMuscles: [],
+    }]);
+    const result = await listRecommendationCandidates();
+    expect(result[0].weightIncrementKg).toBeNull();
   });
 
   it("does NOT filter out an inactive Muscle relation — it is carried through as muscleIsActive: false", async () => {
@@ -168,13 +185,19 @@ describe("getTodayRecommendation", () => {
     const condition = { conditionDate: "2026-09-28", sleepHours: "7.5", fatigueLevel: 3, availableMinutes: 60, sorenessByMuscle: {} };
     mocks.getTodayConditionForRecommendationForUser.mockResolvedValue(condition);
     mocks.exercise.findMany.mockResolvedValue([
-      { id: benchPressId, name: "Bench Press", equipmentType: "BARBELL", exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest", isActive: true } }] },
-      { id: squatId, name: "Squat", equipmentType: "BARBELL", exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Quadriceps", isActive: true } }] },
+      { id: benchPressId, name: "Bench Press", equipmentType: "BARBELL", weightIncrementKg: null, exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest", isActive: true } }] },
+      { id: squatId, name: "Squat", equipmentType: "BARBELL", weightIncrementKg: null, exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Quadriceps", isActive: true } }] },
     ]);
-    mocks.workoutExercise.findMany.mockResolvedValue([{
-      workoutSession: { startedAt: new Date("2026-09-25T00:00:00Z") },
-      exercise: { exerciseMuscles: [{ muscle: { name: "Chest" } }] },
-    }]);
+    // Phase 5F-3B: prisma.workoutExercise.findMany is now called for TWO different purposes in this flow
+    // (getLastTrainedAtByMuscleForUser's plain query, and getPreviousRecommendationProgressForUser's `distinct`
+    // query) — disambiguated here by the one shape difference between their calls, so each gets the rows it
+    // actually expects rather than misreading the other's.
+    mocks.workoutExercise.findMany.mockImplementation((args: { distinct?: unknown }) => Promise.resolve(
+      args.distinct ? [] : [{
+        workoutSession: { startedAt: new Date("2026-09-25T00:00:00Z") },
+        exercise: { exerciseMuscles: [{ muscle: { name: "Chest" } }] },
+      }],
+    ));
     const previousPerformanceByExerciseId = { [benchPressId]: { startedAt: "2026-09-25T00:00:00.000Z", sets: [{ weightKg: "60.00", reps: 8 }] } };
     mocks.getLatestExercisePerformanceForUser.mockResolvedValue(previousPerformanceByExerciseId);
     const engineResult = { kind: "REST", recommendationReason: "test" };
@@ -187,11 +210,12 @@ describe("getTodayRecommendation", () => {
       today: "2026-09-28",
       condition,
       exercises: [
-        { exerciseId: benchPressId, exerciseName: "Bench Press", equipmentType: "BARBELL", isActive: true, muscles: [{ muscleName: "Chest", role: "PRIMARY", muscleIsActive: true }] },
-        { exerciseId: squatId, exerciseName: "Squat", equipmentType: "BARBELL", isActive: true, muscles: [{ muscleName: "Quadriceps", role: "PRIMARY", muscleIsActive: true }] },
+        { exerciseId: benchPressId, exerciseName: "Bench Press", equipmentType: "BARBELL", isActive: true, weightIncrementKg: null, muscles: [{ muscleName: "Chest", role: "PRIMARY", muscleIsActive: true }] },
+        { exerciseId: squatId, exerciseName: "Squat", equipmentType: "BARBELL", isActive: true, weightIncrementKg: null, muscles: [{ muscleName: "Quadriceps", role: "PRIMARY", muscleIsActive: true }] },
       ],
       lastTrainedAtByMuscle: { Chest: "2026-09-25" },
       previousPerformanceByExerciseId,
+      previousRecommendationByExerciseId: {},
     });
     expect(result).toBe(engineResult); // passed through unchanged, not re-shaped
   });
@@ -207,5 +231,63 @@ describe("getTodayRecommendation", () => {
     await getTodayRecommendationForUser(owner);
     expect(mocks.auth).not.toHaveBeenCalled();
     expect(mocks.getTodayConditionForRecommendationForUser).toHaveBeenCalledWith(owner);
+  });
+
+  // Phase 5F-3B: getPreviousRecommendationProgressForUser is internal (no requireUser() of its own, same as
+  // every other *ForUser variant in this file) and only reachable through getTodayRecommendationForUser.
+  describe("previous Recommendation progress (Phase 5F-3B)", () => {
+    const condition = { conditionDate: "2026-09-28", sleepHours: "7.5", fatigueLevel: 3, availableMinutes: 60, sorenessByMuscle: {} };
+    const otherUser = "99999999-9999-4999-8999-999999999999";
+    const workoutPlanId = "44444444-4444-4444-8444-444444444444";
+
+    beforeEach(() => {
+      mocks.getTodayConditionForRecommendationForUser.mockResolvedValue(condition);
+      mocks.exercise.findMany.mockResolvedValue([
+        { id: benchPressId, name: "Bench Press", equipmentType: "BARBELL", weightIncrementKg: { toString: () => "2.5" }, exerciseMuscles: [] },
+      ]);
+      mocks.getLatestExercisePerformanceForUser.mockResolvedValue({});
+      mocks.recommendWorkout.mockReturnValue({ kind: "REST", recommendationReason: "test" });
+    });
+
+    it("AB/AC: scopes the lookup to the given userId, COMPLETED sessions, and Recommendation-linked (workoutPlanId not null) only", async () => {
+      mocks.workoutExercise.findMany.mockImplementation((args: { distinct?: unknown }) => Promise.resolve(args.distinct ? [] : []));
+      await getTodayRecommendationForUser(owner);
+      const distinctCall = mocks.workoutExercise.findMany.mock.calls.find((call) => call[0].distinct)![0];
+      expect(distinctCall.where.workoutSession).toMatchObject({ userId: owner, status: "COMPLETED", workoutPlanId: { not: null } });
+      expect(distinctCall.where.workoutSession.userId).not.toBe(otherUser);
+    });
+
+    it("query count is fixed at 2 extra queries (workoutPlanExercise + workoutSet), not proportional to candidate count", async () => {
+      mocks.exercise.findMany.mockResolvedValue([
+        { id: benchPressId, name: "Bench Press", equipmentType: "BARBELL", weightIncrementKg: null, exerciseMuscles: [] },
+        { id: squatId, name: "Squat", equipmentType: "BARBELL", weightIncrementKg: null, exerciseMuscles: [] },
+      ]);
+      mocks.workoutExercise.findMany.mockImplementation((args: { distinct?: unknown }) => Promise.resolve(
+        args.distinct ? [{ id: "we-1", exerciseId: benchPressId, exerciseOrder: 1, workoutSession: { workoutPlanId } }] : [],
+      ));
+      mocks.workoutPlanExercise.findMany.mockResolvedValue([
+        { workoutPlanId, exerciseId: benchPressId, exerciseOrder: 1, targetWeightKg: { toString: () => "60" }, targetRepsMin: 8, targetRepsMax: 12, targetSets: 3, restSeconds: 90 },
+      ]);
+      mocks.workoutSet.findMany.mockResolvedValue([
+        { workoutExerciseId: "we-1", setNumber: 1, weightKg: { toString: () => "65" }, reps: 10, setType: "WORKING", completed: true },
+        { workoutExerciseId: "we-1", setNumber: 2, weightKg: { toString: () => "60" }, reps: 10, setType: "WORKING", completed: true },
+        { workoutExerciseId: "we-1", setNumber: 3, weightKg: { toString: () => "60" }, reps: 10, setType: "WORKING", completed: true },
+      ]);
+
+      await getTodayRecommendationForUser(owner);
+
+      expect(mocks.workoutPlanExercise.findMany).toHaveBeenCalledTimes(1);
+      expect(mocks.workoutSet.findMany).toHaveBeenCalledTimes(1);
+      expect(mocks.recommendWorkout).toHaveBeenCalledWith(expect.objectContaining({
+        previousRecommendationByExerciseId: { [benchPressId]: { previousTargetWeightKg: 60, progressionDecision: "INCREASE" } },
+      }));
+    });
+
+    it("short-circuits to 0 extra queries when there is no Recommendation-linked history at all", async () => {
+      mocks.workoutExercise.findMany.mockImplementation((args: { distinct?: unknown }) => Promise.resolve(args.distinct ? [] : []));
+      await getTodayRecommendationForUser(owner);
+      expect(mocks.workoutPlanExercise.findMany).not.toHaveBeenCalled();
+      expect(mocks.workoutSet.findMany).not.toHaveBeenCalled();
+    });
   });
 });

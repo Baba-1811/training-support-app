@@ -12,6 +12,8 @@ export function makeExercise(options: {
   secondaryMuscles?: readonly string[];
   // Muscle names (from primaryMuscles/secondaryMuscles) to mark as muscleIsActive: false.
   inactiveMuscles?: readonly string[];
+  // Phase 5F-3B: null (no safe auto-increment) unless a test opts in.
+  weightIncrementKg?: number | null;
 }): ExerciseCandidateDTO {
   const inactive = new Set(options.inactiveMuscles ?? []);
   const link = (role: "PRIMARY" | "SECONDARY") => (muscleName: string) => ({ muscleName, role, muscleIsActive: !inactive.has(muscleName) });
@@ -20,6 +22,7 @@ export function makeExercise(options: {
     exerciseName: options.name,
     equipmentType: options.equipmentType ?? "BARBELL",
     isActive: options.isActive ?? true,
+    weightIncrementKg: options.weightIncrementKg ?? null,
     muscles: [...(options.primaryMuscles ?? []).map(link("PRIMARY")), ...(options.secondaryMuscles ?? []).map(link("SECONDARY"))],
   };
 }
@@ -39,6 +42,7 @@ export function makeContext(overrides: Partial<RecommendationContext> = {}): Rec
     exercises: [],
     lastTrainedAtByMuscle: {},
     previousPerformanceByExerciseId: {},
+    previousRecommendationByExerciseId: {},
     ...overrides,
   };
 }
