@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { exerciseLabel } from "@/lib/exercises/labels";
 import {
-  formatRestSeconds, formatTargetRepsAndSets, formatTargetWeight, joinCategoryLabels, recommendedCategoryImage,
+  formatRestSeconds, formatTargetRepsAndSets, formatTargetWeight, formatWeightTargetExplanation, joinCategoryLabels, recommendedCategoryImage,
 } from "@/lib/recommendations/display";
 import type { RecommendationResult } from "@/lib/recommendations/types";
 import { StartFromRecommendationButton } from "./start-from-recommendation-button";
@@ -45,12 +45,14 @@ export function RecommendationCard({ recommendation }: { recommendation: Recomme
     <ul className="mt-3 space-y-2">
       {recommendation.exercises.map((exercise) => {
         const weight = formatTargetWeight(exercise.targetWeightKg);
+        const weightExplanation = formatWeightTargetExplanation(exercise.weightTargetExplanation, exercise.targetWeightKg);
         return <li key={exercise.exerciseId} className="rounded-xl bg-slate-50 p-3">
           <p className="truncate text-sm font-semibold text-slate-900">{exerciseLabel(exercise.exerciseName)}</p>
           <p className="truncate text-xs text-slate-400">{exercise.exerciseName}</p>
           <p className="mt-1 text-xs text-slate-600">
             {weight !== null && <>{weight}・</>}{formatTargetRepsAndSets(exercise)}・{formatRestSeconds(exercise.restSeconds)}
           </p>
+          {weightExplanation !== null && <p className="mt-0.5 truncate text-[11px] leading-snug text-slate-400">{weightExplanation}</p>}
         </li>;
       })}
     </ul>
