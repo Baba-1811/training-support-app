@@ -18,6 +18,7 @@ type UsableExercise = {
   exerciseId: string;
   exerciseName: string;
   equipmentType: EquipmentType;
+  weightIncrementKg: number | null;
   primaryMuscles: readonly string[];
   secondaryMuscles: readonly string[];
   categories: readonly CategorySlug[];
@@ -35,7 +36,10 @@ function toUsableExercise(exercise: ExerciseCandidateDTO): UsableExercise | null
   // An Exercise whose only PRIMARY muscles are inactive (or unmapped) belongs to no category, so it can never
   // be recommended — this is the "inactive PRIMARY muscle" defense independent of the query layer.
   if (categories.length === 0) return null;
-  return { exerciseId: exercise.exerciseId, exerciseName: exercise.exerciseName, equipmentType: exercise.equipmentType, primaryMuscles, secondaryMuscles, categories };
+  return {
+    exerciseId: exercise.exerciseId, exerciseName: exercise.exerciseName, equipmentType: exercise.equipmentType,
+    weightIncrementKg: exercise.weightIncrementKg, primaryMuscles, secondaryMuscles, categories,
+  };
 }
 
 function buildUsableExercises(exercises: readonly ExerciseCandidateDTO[]): UsableExercise[] {
@@ -218,12 +222,15 @@ function buildRecommendedExercise(
   selection: Selection, reducedLoad: boolean, context: RecommendationContext,
 ): RecommendedExercise {
   const previous = context.previousPerformanceByExerciseId[selection.exercise.exerciseId] ?? null;
+  const previousRecommendation = context.previousRecommendationByExerciseId[selection.exercise.exerciseId];
   const { targetRepsMin, targetRepsMax } = resolveTargetReps(previous);
   return {
     exerciseId: selection.exercise.exerciseId,
     exerciseName: selection.exercise.exerciseName,
     category: selection.category,
-    targetWeightKg: resolveTargetWeightKg(selection.exercise.equipmentType, previous),
+    targetWeightKg: resolveTargetWeightKg(selection.exercise.equipmentType, previous, previousRecommendation && {
+      ...previousRecommendation, weightIncrementKg: selection.exercise.weightIncrementKg,
+    }),
     targetRepsMin,
     targetRepsMax,
     targetSets: resolveTargetSets(reducedLoad),

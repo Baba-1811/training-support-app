@@ -4,9 +4,13 @@ import { requireUser } from "@/lib/auth/require-user";
 import { jstDateOnly } from "@/lib/date/jst";
 import { getTodayConditionForRecommendationForUser } from "@/lib/conditions/queries";
 import { getLatestExercisePerformanceForUser } from "@/lib/workouts/queries";
+import { matchRecommendationTarget, type PlanExerciseSnapshot } from "@/lib/workouts/recommendation-target";
+import { evaluateRecommendedExercise } from "@/lib/workouts/recommendation-evaluation";
+import type { SetDTO } from "@/lib/workouts/types";
 import { toJstDateOnly } from "./rules";
 import { recommendWorkout } from "./engine";
-import type { ExerciseCandidateDTO, ExerciseMuscleLinkDTO, RecommendationResult } from "./types";
+import { decideProgression } from "./progression";
+import type { ExerciseCandidateDTO, ExerciseMuscleLinkDTO, PreviousRecommendationContext, RecommendationResult } from "./types";
 
 const LOOKBACK_DAYS = 30;
 
@@ -31,7 +35,7 @@ async function listRecommendationCandidatesInternal(): Promise<ExerciseCandidate
   const exercises = await prisma.exercise.findMany({
     where: { isActive: true },
     select: {
-      id: true, name: true, equipmentType: true,
+      id: true, name: true, equipmentType: true, weightIncrementKg: true,
       exerciseMuscles: { select: { role: true, muscle: { select: { name: true, isActive: true } } } },
     },
   });
@@ -40,6 +44,7 @@ async function listRecommendationCandidatesInternal(): Promise<ExerciseCandidate
     exerciseName: exercise.name,
     equipmentType: exercise.equipmentType,
     isActive: true, // guaranteed by the where-clause above; carried through explicitly rather than assumed by the engine
+    weightIncrementKg: exercise.weightIncrementKg === null ? null : Number(exercise.weightIncrementKg),
     muscles: exercise.exerciseMuscles.map((relation): ExerciseMuscleLinkDTO => ({
       muscleName: relation.muscle.name, role: relation.role, muscleIsActive: relation.muscle.isActive,
     })),
@@ -88,6 +93,82 @@ async function getLastTrainedAtByMuscleForUser(userId: string, today: Date): Pro
   return reduceLastTrainedAtByMuscle(rows);
 }
 
+type LatestRecommendationRow = { exerciseId: string; exerciseOrder: number; workoutExerciseId: string; workoutPlanId: string };
+type PlanExerciseRow = PlanExerciseSnapshot & { workoutPlanId: string };
+type RecommendationSetRow = { workoutExerciseId: string; setNumber: number; weightKg: string; reps: number; setType: "WORKING" | "WARMUP"; completed: boolean };
+
+// Pure (Phase 5F-3B): reuses the exact Phase 5E-1 matching rule (matchRecommendationTarget — exerciseOrder
+// primary, exerciseId consistency guard) and the Phase 5F-1/5F-3A evaluation/progression pipeline, rather than
+// re-implementing EXCEEDED/ACHIEVED/etc. at the query layer. `latestRows` is at most one row per exerciseId (the
+// most recent Recommendation-linked COMPLETED WorkoutExercise); an exerciseId is simply absent from the result
+// when no matching WorkoutPlanExercise is found for it (not a "valid previous Recommendation" — see
+// target.ts#resolveTargetWeightKg, which then falls back to the latest-performance-based target instead).
+export function reducePreviousRecommendationProgress(
+  latestRows: readonly LatestRecommendationRow[], planRows: readonly PlanExerciseRow[], setRows: readonly RecommendationSetRow[],
+): Record<string, PreviousRecommendationContext> {
+  const result: Record<string, PreviousRecommendationContext> = {};
+  for (const row of latestRows) {
+    const plansInThisPlan = planRows.filter((plan) => plan.workoutPlanId === row.workoutPlanId);
+    const target = matchRecommendationTarget({ exerciseId: row.exerciseId, exerciseOrder: row.exerciseOrder }, plansInThisPlan);
+    if (!target) continue;
+    const sets: SetDTO[] = setRows
+      .filter((set) => set.workoutExerciseId === row.workoutExerciseId)
+      .map((set) => ({
+        id: `${set.workoutExerciseId}-${set.setNumber}`, setNumber: set.setNumber, weightKg: set.weightKg, reps: set.reps,
+        rir: null, setType: set.setType, completed: set.completed,
+      }));
+    const evaluation = evaluateRecommendedExercise({ target, sets });
+    if (!evaluation) continue; // unreachable (target is non-null here); kept so a future signature change fails safe.
+    result[row.exerciseId] = { previousTargetWeightKg: target.targetWeightKg, progressionDecision: decideProgression(evaluation).decision };
+  }
+  return result;
+}
+
+// Internal, owner-scoped (no requireUser() of its own — same reasoning as the other *ForUser variants in this
+// file). THREE fixed queries regardless of candidate count (no N+1): (1) the single most recent
+// Recommendation-linked COMPLETED WorkoutExercise per exerciseId — `workoutPlanId: { not: null }` and
+// `status: "COMPLETED"` exclude both a normal/Exercise-Library Workout and any IN_PROGRESS/CANCELLED one (so
+// today's own in-flight Workout, which cannot be COMPLETED yet, is never picked up as its own "previous");
+// (2) every WorkoutPlanExercise belonging to those rows' WorkoutPlans, matched to its own WorkoutExercise by
+// exerciseOrder (reducePreviousRecommendationProgress, not here); (3) every actual WorkoutSet for those exact
+// WorkoutExercise rows. The `exerciseOrder: "desc"` tiebreak only disambiguates the rare case of the same
+// Exercise appearing twice within one session (deterministic test behavior); either duplicate's own target and
+// actual are still correctly paired by exerciseOrder regardless of which one this picks.
+async function getPreviousRecommendationProgressForUser(
+  userId: string, exerciseIds: string[],
+): Promise<Record<string, PreviousRecommendationContext>> {
+  const uniqueIds = [...new Set(exerciseIds)];
+  if (uniqueIds.length === 0) return {};
+
+  const latestRows = await prisma.workoutExercise.findMany({
+    where: { exerciseId: { in: uniqueIds }, workoutSession: { userId, status: "COMPLETED", workoutPlanId: { not: null } } },
+    distinct: ["exerciseId"],
+    orderBy: [{ workoutSession: { startedAt: "desc" } }, { exerciseOrder: "desc" }],
+    select: { id: true, exerciseId: true, exerciseOrder: true, workoutSession: { select: { workoutPlanId: true } } },
+  });
+  if (latestRows.length === 0) return {};
+
+  const workoutPlanIds = [...new Set(latestRows.map((row) => row.workoutSession.workoutPlanId!))];
+  const [planRows, setRows] = await Promise.all([
+    prisma.workoutPlanExercise.findMany({
+      where: { workoutPlanId: { in: workoutPlanIds } },
+      select: { workoutPlanId: true, exerciseId: true, exerciseOrder: true, targetWeightKg: true, targetRepsMin: true, targetRepsMax: true, targetSets: true, restSeconds: true },
+    }),
+    prisma.workoutSet.findMany({
+      where: { workoutExerciseId: { in: latestRows.map((row) => row.id) } },
+      select: { workoutExerciseId: true, setNumber: true, weightKg: true, reps: true, setType: true, completed: true },
+    }),
+  ]);
+
+  return reducePreviousRecommendationProgress(
+    latestRows.map((row) => ({
+      exerciseId: row.exerciseId, exerciseOrder: row.exerciseOrder, workoutExerciseId: row.id, workoutPlanId: row.workoutSession.workoutPlanId!,
+    })),
+    planRows.map((row) => ({ ...row, targetWeightKg: row.targetWeightKg === null ? null : Number(row.targetWeightKg) })),
+    setRows.map((row) => ({ ...row, weightKg: row.weightKg.toString() })),
+  );
+}
+
 // DB -> RecommendationContext -> recommendWorkout() -> RecommendationResult. Read/compose only: nothing here
 // persists a WorkoutPlan (that is a later phase). null means no Condition was entered today (distinct from the
 // engine's own { kind: "REST" } result, which means a Condition exists but rest is recommended — see
@@ -115,9 +196,15 @@ export async function getTodayRecommendationForUser(userId: string): Promise<Rec
   ]);
   if (!condition) return null;
 
-  // Depends on the candidate list above, so it cannot join the Promise.all: only run it once we know which
-  // Exercises are actually in play, and never for a Condition-less day (would be wasted work).
-  const previousPerformanceByExerciseId = await getLatestExercisePerformanceForUser(userId, exercises.map((exercise) => exercise.exerciseId));
+  // Both depend on the candidate list above, so neither can join the Promise.all above: only run once we know
+  // which Exercises are actually in play, and never for a Condition-less day (would be wasted work).
+  const exerciseIds = exercises.map((exercise) => exercise.exerciseId);
+  const [previousPerformanceByExerciseId, previousRecommendationByExerciseId] = await Promise.all([
+    getLatestExercisePerformanceForUser(userId, exerciseIds),
+    getPreviousRecommendationProgressForUser(userId, exerciseIds),
+  ]);
 
-  return recommendWorkout({ today: todayString, condition, exercises, lastTrainedAtByMuscle, previousPerformanceByExerciseId });
+  return recommendWorkout({
+    today: todayString, condition, exercises, lastTrainedAtByMuscle, previousPerformanceByExerciseId, previousRecommendationByExerciseId,
+  });
 }
