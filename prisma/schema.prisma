@@ -61,6 +61,13 @@ enum SetType {
   WORKING
 }
 
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+}
+
 // ============================================================
 // User
 // ============================================================
@@ -75,12 +82,14 @@ model User {
   createdAt            DateTime      @default(now()) @db.Timestamptz(6)
   updatedAt            DateTime      @updatedAt @db.Timestamptz(6)
 
-  goals            Goal[]
-  bodyMeasurements BodyMeasurement[]
-  dailyConditions  DailyCondition[]
-  workoutPlans     WorkoutPlan[]
-  workoutSessions  WorkoutSession[]
+  goals             Goal[]
+  bodyMeasurements  BodyMeasurement[]
+  dailyConditions   DailyCondition[]
+  workoutPlans      WorkoutPlan[]
+  workoutSessions   WorkoutSession[]
   favoriteExercises FavoriteExercise[]
+  nutritionEntries  NutritionEntry[]
+  nutritionTargets  NutritionTarget[]
 }
 
 // ============================================================
@@ -342,4 +351,51 @@ model WorkoutSet {
   workoutExercise WorkoutExercise @relation(fields: [workoutExerciseId], references: [id], onDelete: Cascade)
 
   @@unique([workoutExerciseId, setNumber])
+}
+
+// ============================================================
+// NutritionEntry
+// ユーザーが記録した1件の食事（Phase 6）。name/calories/PFCはその場のスナップショットで、
+// Food masterテーブルへの参照は持たない（Phase 6Aの設計に基づく、将来のfoodId追加を妨げない構造）。
+// 同じ食事に複数entryを記録できるため、(userId, entryDate, mealType) にUNIQUEは置かない。
+// ============================================================
+
+model NutritionEntry {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  entryDate    DateTime @db.Date
+  mealType     MealType
+  name         String   @db.VarChar(100)
+  calories     Int
+  proteinGrams Decimal? @db.Decimal(5, 1)
+  fatGrams     Decimal? @db.Decimal(5, 1)
+  carbsGrams   Decimal? @db.Decimal(5, 1)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, entryDate])
+}
+
+// ============================================================
+// NutritionTarget
+// 目標PFC/カロリーのINSERT-only履歴モデル（Phase 6）。UPDATEで現在値を書き換えるのではなく、
+// 目標が変わるたびに新しい行を作る。「現在のtarget」は (userId で) effectiveFrom <= today を
+// 満たす行の中から effectiveFrom DESC, createdAt DESC で最新の1件を選ぶ意味論（Phase 6Cでquery実装）。
+// ============================================================
+
+model NutritionTarget {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  targetCalories Int
+  targetProtein  Decimal? @db.Decimal(5, 1)
+  targetFat      Decimal? @db.Decimal(5, 1)
+  targetCarbs    Decimal? @db.Decimal(5, 1)
+  effectiveFrom  DateTime @db.Date
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, effectiveFrom])
 }
