@@ -58,3 +58,25 @@ describe("W. Workout start CTA unaffected", () => {
     expect(cardSource).toMatch(/<StartFromRecommendationButton\s*\/>/);
   });
 });
+
+// Phase 5H: when an IN_PROGRESS workout already exists, Home's one Primary CTA is InProgressWorkoutCard's
+// "続ける" — the Recommendation card must not also offer its own "このメニューで始める", which would start a
+// second, competing Workout. The recommendation info itself (exercises/targets/explanation) stays visible either
+// way; only the Start button is conditional. No tsx-rendering infra here either, so this is a source-text check
+// of the conditional, same convention as the rest of this file.
+describe("Phase 5H. hasInProgressWorkout suppresses the Start CTA, never the Recommendation info", () => {
+  it("accepts an optional hasInProgressWorkout prop, defaulting to false (unchanged behavior for every existing caller)", () => {
+    expect(cardSource).toMatch(/hasInProgressWorkout\s*=\s*false/);
+  });
+
+  it("renders StartFromRecommendationButton only when hasInProgressWorkout is false", () => {
+    expect(cardSource).toMatch(/\{!hasInProgressWorkout\s*&&\s*<StartFromRecommendationButton\s*\/>\}/);
+  });
+
+  it("the suppression lives in the WORKOUT branch only — REST and the null-Recommendation branch never read this prop", () => {
+    const restBranch = cardSource.slice(cardSource.indexOf('kind === "REST"'), cardSource.indexOf("categorySummary ="));
+    const nullBranch = cardSource.slice(cardSource.indexOf("recommendation === null"), cardSource.indexOf('kind === "REST"'));
+    expect(restBranch).not.toMatch(/hasInProgressWorkout/);
+    expect(nullBranch).not.toMatch(/hasInProgressWorkout/);
+  });
+});

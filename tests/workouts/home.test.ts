@@ -178,3 +178,43 @@ describe("Home auth call count (Auth bug fix)", () => {
     }
   });
 });
+
+// Phase 5H "Home Dashboard Polish": one Primary CTA at a time (never two competing "start a workout" actions),
+// and 今日の状態 -> 今日やること -> 最近の成長 -> 最近のトレーニング as the Home information order. Source-text
+// checks for the same reason as the rest of this file (no tsx-rendering infra).
+describe("Phase 5H. Home dashboard hierarchy", () => {
+  const homeSource = readFileSync(join(process.cwd(), "app", "(protected)", "page.tsx"), "utf8");
+  const formSource = readFileSync(join(process.cwd(), "components", "workouts", "start-workout-form.tsx"), "utf8");
+
+  it("tells RecommendationCard whether a workout is already IN_PROGRESS, so it can hide its own competing Start CTA", () => {
+    expect(homeSource).toMatch(/<RecommendationCard\s+recommendation=\{recommendation\}\s+hasInProgressWorkout=\{current\s*!==\s*null\}\s*\/>/);
+  });
+
+  it("still shows exactly one of InProgressWorkoutCard or the manual StartWorkoutForm, never both (IN_PROGRESS stays the one Primary CTA)", () => {
+    const trainingSection = homeSource.slice(homeSource.indexOf('aria-label="トレーニング"'), homeSource.indexOf("</section>"));
+    expect(trainingSection).toMatch(/current\s*\?/);
+    expect(trainingSection).toMatch(/<InProgressWorkoutCard\b/);
+    expect(trainingSection).toMatch(/<StartWorkoutForm compact \/>/);
+  });
+
+  it("shows 成長スナップショット (growth) before 最近のトレーニング (recent), per the Home information order", () => {
+    const growthIndex = homeSource.indexOf("<GrowthSnapshot");
+    const recentIndex = homeSource.indexOf("<RecentWorkoutsSection");
+    expect(growthIndex).toBeGreaterThan(-1);
+    expect(recentIndex).toBeGreaterThan(-1);
+    expect(growthIndex).toBeLessThan(recentIndex);
+  });
+
+  const buttonSource = formSource.slice(formSource.indexOf("<button disabled={pending}"));
+
+  it("the manual start-workout escape hatch (Home's compact StartWorkoutForm) is styled as a secondary action, never solid orange, so it cannot be mistaken for the one Primary CTA", () => {
+    const compactButtonClass = buttonSource.match(/\?\s*"([^"]*)"/)?.[1] ?? "";
+    expect(compactButtonClass).not.toMatch(/bg-orange-500/);
+    expect(compactButtonClass).toMatch(/border-slate-300/);
+  });
+
+  it("the full (non-compact) /workouts StartWorkoutForm keeps its own solid-orange Primary CTA styling, unaffected by Home's secondary styling", () => {
+    const primaryButtonClass = buttonSource.match(/:\s*"([^"]*)"\s*\}>/)?.[1] ?? "";
+    expect(primaryButtonClass).toMatch(/bg-orange-500/);
+  });
+});
