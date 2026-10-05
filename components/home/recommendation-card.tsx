@@ -12,7 +12,13 @@ import { StartFromRecommendationButton } from "./start-from-recommendation-butto
 // this card never needs a client directive of its own. Starting a WORKOUT recommendation re-fetches and
 // re-persists on the server (see lib/workouts/mutations.ts) — this component only renders what it is given and
 // never calls that mutation layer or Prisma directly.
-export function RecommendationCard({ recommendation }: { recommendation: RecommendationResult | null }) {
+//
+// Phase 5H: hasInProgressWorkout hides the Start button (never the recommendation info itself) so the card
+// never offers a second, competing "start a new workout" action while InProgressWorkoutCard's own "続ける" is
+// the one Primary CTA on screen.
+export function RecommendationCard(
+  { recommendation, hasInProgressWorkout = false }: { recommendation: RecommendationResult | null; hasInProgressWorkout?: boolean },
+) {
   if (recommendation === null) {
     return <section aria-labelledby="recommendation-heading" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <h2 id="recommendation-heading" className="text-base font-bold text-slate-900">今日のおすすめ</h2>
@@ -56,6 +62,6 @@ export function RecommendationCard({ recommendation }: { recommendation: Recomme
         </li>;
       })}
     </ul>
-    <StartFromRecommendationButton />
+    {!hasInProgressWorkout && <StartFromRecommendationButton />}
   </section>;
 }

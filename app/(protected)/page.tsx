@@ -43,9 +43,11 @@ export default async function Home() {
       </div>
     </header>
 
-    {/* Condition -> Recommendation -> Workout: Recommendation reads Condition, so it is shown right after it. */}
+    {/* Condition -> Recommendation -> Workout: Recommendation reads Condition, so it is shown right after it.
+        hasInProgressWorkout hides the Recommendation card's own Start button when there is one: the Primary
+        CTA below is then "続ける", never a second, competing "start a new workout". */}
     <ConditionCard condition={condition} />
-    <RecommendationCard recommendation={recommendation} />
+    <RecommendationCard recommendation={recommendation} hasInProgressWorkout={current !== null} />
 
     {/* One primary action: resume the unfinished workout if there is one, otherwise start a new one. */}
     <section aria-label="トレーニング" className="space-y-3">
@@ -59,7 +61,8 @@ export default async function Home() {
         : <StartWorkoutForm compact />}
     </section>
 
-    <RecentWorkoutsSection workouts={recent} historyLinkLabel="履歴をすべて見る" />
+    {/* 今日の状態 -> 今日やること (above) -> 最近の成長 -> 最近のトレーニング: growth before recent activity. */}
     <GrowthSnapshot snapshot={buildGrowthSnapshot(trends)} />
+    <RecentWorkoutsSection workouts={recent} historyLinkLabel="履歴をすべて見る" />
   </main>;
 }
