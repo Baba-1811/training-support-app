@@ -40,15 +40,20 @@ const fields = {
   carbsGrams: macro,
 };
 
+// A "YYYY-MM-DD" JST calendar date, converted without new Date(string) (shared by entryDate / effectiveFrom).
+const jstDate = z.string("日付が正しくありません。").transform((value, ctx) => {
+  const date = parseJstDateString(value);
+  if (!date) { ctx.addIssue({ code: "custom", message: "日付が正しくありません。" }); return z.NEVER; }
+  return date;
+});
+
 // userId is intentionally absent (strictObject rejects it): it always comes from requireUser().
-// entryDate is a "YYYY-MM-DD" JST calendar date, converted without new Date(string).
-export const createNutritionEntrySchema = z.strictObject({
-  entryDate: z.string("日付が正しくありません。").transform((value, ctx) => {
-    const date = parseJstDateString(value);
-    if (!date) { ctx.addIssue({ code: "custom", message: "日付が正しくありません。" }); return z.NEVER; }
-    return date;
-  }),
-  ...fields,
+export const createNutritionEntrySchema = z.strictObject({ entryDate: jstDate, ...fields });
+
+// NutritionTarget is INSERT-only history: this input always becomes a NEW row (see mutations.ts). effectiveFrom is
+// the JST date being viewed; calories required, P/F/C optional (blank -> null, 0 stays 0).
+export const createNutritionTargetSchema = z.strictObject({
+  effectiveFrom: jstDate, targetCalories: calories, targetProtein: macro, targetFat: macro, targetCarbs: macro,
 });
 
 // entryDate is not editable; to move an entry to another day, delete + add.

@@ -2,6 +2,7 @@ import { getNutritionDashboard } from "@/lib/nutrition/queries";
 import { groupEntriesByMeal, MEAL_SECTIONS } from "@/lib/nutrition/display";
 import { jstDateOnly, parseJstDateString } from "@/lib/date/jst";
 import { MealSection } from "@/components/nutrition/meal-section";
+import { TargetForm } from "@/components/nutrition/target-form";
 import { NutritionSummary } from "@/components/nutrition/nutrition-summary";
 
 // /nutrition?date=YYYY-MM-DD shows that JST day; a missing, repeated or invalid value falls back to JST today.
@@ -18,6 +19,7 @@ export default async function NutritionPage({ searchParams }: { searchParams: Pr
       <p className="mt-1 text-sm text-slate-500">{isToday ? "今日" : dashboard.date}の食事を記録しましょう。PFCがわからなくてもカロリーだけで記録できます。</p>
     </div>
     <NutritionSummary summary={dashboard.summary} target={dashboard.target} />
+    <TargetForm date={dashboard.date} target={dashboard.target} />
     {MEAL_SECTIONS.map((mealType) => <MealSection key={mealType} date={dashboard.date} mealType={mealType} entries={grouped[mealType]} />)}
   </main>;
 }

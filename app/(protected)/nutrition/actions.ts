@@ -4,9 +4,9 @@ import { revalidatePath } from "next/cache";
 import { unstable_rethrow } from "next/navigation";
 import { requireUser } from "@/lib/auth/require-user";
 import {
-  createNutritionEntryForUser, deleteNutritionEntryForUser, updateNutritionEntryForUser, NutritionError,
+  createNutritionEntryForUser, createNutritionTargetForUser, deleteNutritionEntryForUser, updateNutritionEntryForUser, NutritionError,
 } from "@/lib/nutrition/mutations";
-import { createNutritionEntrySchema, deleteNutritionEntrySchema, updateNutritionEntrySchema } from "@/lib/nutrition/validation";
+import { createNutritionEntrySchema, createNutritionTargetSchema, deleteNutritionEntrySchema, updateNutritionEntrySchema } from "@/lib/nutrition/validation";
 import type { NutritionActionResult } from "@/lib/nutrition/types";
 
 // Authenticates once, validates server-side, then runs the owner-scoped mutation with that user.id.
@@ -34,3 +34,4 @@ async function perform<S extends z.ZodType>(
 export async function createNutritionEntry(input: unknown) { return perform(createNutritionEntrySchema, input, createNutritionEntryForUser); }
 export async function updateNutritionEntry(input: unknown) { return perform(updateNutritionEntrySchema, input, updateNutritionEntryForUser); }
 export async function deleteNutritionEntry(input: unknown) { return perform(deleteNutritionEntrySchema, input, deleteNutritionEntryForUser); }
+export async function createNutritionTarget(input: unknown) { return perform(createNutritionTargetSchema, input, createNutritionTargetForUser); }

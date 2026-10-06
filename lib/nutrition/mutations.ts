@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import type { z } from "zod";
-import type { createNutritionEntrySchema, deleteNutritionEntrySchema, updateNutritionEntrySchema } from "./validation";
+import type { createNutritionEntrySchema, createNutritionTargetSchema, deleteNutritionEntrySchema, updateNutritionEntrySchema } from "./validation";
 
 export class NutritionError extends Error {
   constructor(public code: "NOT_FOUND") { super(code); }
@@ -41,4 +41,18 @@ export async function deleteNutritionEntryForUser(userId: string, input: z.outpu
   const result = await prisma.nutritionEntry.deleteMany({ where: { id: input.id, userId } });
   if (result.count === 0) throw new NutritionError("NOT_FOUND");
   return input.id;
+}
+
+// NutritionTarget is INSERT-only history: "changing" a target adds a new row, never updates or deletes an old one
+// (the current target is picked by effectiveFrom DESC, createdAt DESC, see queries.ts). So there is deliberately
+// no update/delete here, and same-day re-saves just add rows.
+export async function createNutritionTargetForUser(userId: string, input: z.output<typeof createNutritionTargetSchema>): Promise<string> {
+  const row = await prisma.nutritionTarget.create({
+    data: {
+      userId, effectiveFrom: input.effectiveFrom, targetCalories: input.targetCalories,
+      targetProtein: grams(input.targetProtein), targetFat: grams(input.targetFat), targetCarbs: grams(input.targetCarbs),
+    },
+    select: { id: true },
+  });
+  return row.id;
 }
