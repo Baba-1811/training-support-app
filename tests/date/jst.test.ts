@@ -1,5 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { jstDateOnly, jstDayRange } from "@/lib/date/jst";
+import { jstDateOnly, jstDayRange, parseJstDateString } from "@/lib/date/jst";
+
+describe("parseJstDateString", () => {
+  it("returns the UTC-midnight date regardless of the server timezone", () => {
+    const originalTz = process.env.TZ;
+    try {
+      process.env.TZ = "America/Los_Angeles";
+      expect(parseJstDateString("2026-09-28")?.toISOString()).toBe("2026-09-28T00:00:00.000Z");
+    } finally {
+      process.env.TZ = originalTz;
+    }
+  });
+
+  it("accepts a leap day and rejects impossible or malformed dates", () => {
+    expect(parseJstDateString("2028-02-29")?.toISOString()).toBe("2028-02-29T00:00:00.000Z");
+    for (const bad of ["2026-02-29", "2026-02-30", "2026-13-01", "2026-00-10", "2026-9-28", "20260928", "2026-09-28T00:00", " 2026-09-28", "", "abc", "1999-12-31"]) {
+      expect(parseJstDateString(bad)).toBeNull();
+    }
+  });
+
+  it("matches the shape jstDateOnly() produces", () => {
+    expect(parseJstDateString("2026-09-28")?.getTime()).toBe(jstDateOnly(new Date("2026-09-27T15:30:00Z")).getTime());
+  });
+});
 
 describe("jstDayRange", () => {
   const date = new Date("2026-09-28T00:00:00.000Z");

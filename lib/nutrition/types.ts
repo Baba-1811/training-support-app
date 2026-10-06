@@ -36,6 +36,10 @@ export type BodyWeightDTO = {
   weightKg: number;
 };
 
+export type NutritionActionResult =
+  | { ok: true; data: { id: string } }
+  | { ok: false; code: "VALIDATION" | "NOT_FOUND" | "FAILED"; message: string; fieldErrors?: Record<string, string[]> };
+
 export type NutritionDashboardDTO = {
   date: string; // YYYY-MM-DD, the JST calendar date shown
   entries: NutritionEntryDTO[];
