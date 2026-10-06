@@ -1,5 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { jstDateOnly } from "@/lib/date/jst";
+import { jstDateOnly, jstDayRange } from "@/lib/date/jst";
+
+describe("jstDayRange", () => {
+  const date = new Date("2026-09-28T00:00:00.000Z");
+
+  it("spans JST midnight to the next JST midnight (15:00Z to 15:00Z), not UTC midnight", () => {
+    const { start, end } = jstDayRange(date);
+    expect(start.toISOString()).toBe("2026-09-27T15:00:00.000Z");
+    expect(end.toISOString()).toBe("2026-09-28T15:00:00.000Z");
+  });
+
+  it("is half-open: 00:00 JST belongs to the day, the next 00:00 JST does not", () => {
+    const { start, end } = jstDayRange(date);
+    const jstMidnight = new Date("2026-09-27T15:00:00Z"); // 2026-09-28 00:00 JST
+    const lastMoment = new Date("2026-09-28T14:59:59.999Z"); // 2026-09-28 23:59:59.999 JST
+    const nextMidnight = new Date("2026-09-28T15:00:00Z"); // 2026-09-29 00:00 JST
+    expect(jstMidnight >= start && jstMidnight < end).toBe(true);
+    expect(lastMoment >= start && lastMoment < end).toBe(true);
+    expect(nextMidnight < end).toBe(false);
+  });
+
+  it("round-trips with jstDateOnly", () => {
+    const { start } = jstDayRange(jstDateOnly(new Date("2026-09-27T15:30:00Z")));
+    expect(start.toISOString()).toBe("2026-09-27T15:00:00.000Z");
+  });
+});
 
 const iso = (date: Date) => date.toISOString();
 

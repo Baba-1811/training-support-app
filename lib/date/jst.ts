@@ -9,3 +9,12 @@ export function jstDateOnly(now: Date = new Date()): Date {
   const jst = new Date(now.getTime() + JST_OFFSET_MS);
   return new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate()));
 }
+
+// The half-open instant range [start, end) covering one JST calendar day, for filtering a timestamptz column
+// (e.g. BodyMeasurement.measuredAt) by "that JST day". `date` is a JST calendar date anchored at UTC midnight (what
+// jstDateOnly() returns). JST midnight is 15:00Z of the previous UTC day, so the range is shifted back by 9h —
+// a plain UTC-midnight bound would cut the JST day at 09:00 JST.
+export function jstDayRange(date: Date): { start: Date; end: Date } {
+  const start = new Date(date.getTime() - JST_OFFSET_MS);
+  return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
+}
