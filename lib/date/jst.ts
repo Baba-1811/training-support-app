@@ -37,3 +37,9 @@ export function parseJstDateString(value: string): Date | null {
   const valid = date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
   return valid && year >= 2000 ? date : null;
 }
+
+// The JST calendar date ("YYYY-MM-DD") an instant falls on, e.g. 2026-10-05T15:30Z -> "2026-10-06". Pure +9h shift,
+// independent of the server's timezone; use this (not toISOString().slice) to group a timestamptz by JST day.
+export function jstDateString(instant: Date): string {
+  return new Date(instant.getTime() + JST_OFFSET_MS).toISOString().slice(0, 10);
+}
