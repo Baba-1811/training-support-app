@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { jstDateOnly, jstDayRange, parseJstDateString } from "@/lib/date/jst";
+import { jstDateOnly, jstDayRange, jstMeasurementInstant, parseJstDateString } from "@/lib/date/jst";
 
 describe("parseJstDateString", () => {
   it("returns the UTC-midnight date regardless of the server timezone", () => {
@@ -50,6 +50,24 @@ describe("jstDayRange", () => {
 });
 
 const iso = (date: Date) => date.toISOString();
+
+describe("jstMeasurementInstant", () => {
+  it("is 12:00 JST (03:00Z) of the given JST date, not UTC midnight", () => {
+    expect(jstMeasurementInstant(parseJstDateString("2026-10-06")!).toISOString()).toBe("2026-10-06T03:00:00.000Z");
+  });
+
+  it("is deterministic and always inside that date's jstDayRange, 12h from both edges", () => {
+    for (const text of ["2026-01-01", "2026-02-28", "2026-12-31", "2028-02-29"]) {
+      const date = parseJstDateString(text)!;
+      const { start, end } = jstDayRange(date);
+      const instant = jstMeasurementInstant(date);
+      expect(instant.getTime()).toBe(jstMeasurementInstant(parseJstDateString(text)!).getTime());
+      expect(instant >= start && instant < end).toBe(true);
+      expect(instant.getTime() - start.getTime()).toBe(12 * 60 * 60 * 1000);
+      expect(end.getTime() - instant.getTime()).toBe(12 * 60 * 60 * 1000);
+    }
+  });
+});
 
 describe("jstDateOnly", () => {
   it("keeps the same calendar date when UTC and JST agree (midday)", () => {

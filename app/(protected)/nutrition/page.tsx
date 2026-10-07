@@ -3,6 +3,7 @@ import { groupEntriesByMeal, MEAL_SECTIONS } from "@/lib/nutrition/display";
 import { jstDateOnly, parseJstDateString } from "@/lib/date/jst";
 import { MealSection } from "@/components/nutrition/meal-section";
 import { TargetForm } from "@/components/nutrition/target-form";
+import { WeightSection } from "@/components/nutrition/weight-section";
 import { NutritionSummary } from "@/components/nutrition/nutrition-summary";
 
 // /nutrition?date=YYYY-MM-DD shows that JST day; a missing, repeated or invalid value falls back to JST today.
@@ -20,6 +21,7 @@ export default async function NutritionPage({ searchParams }: { searchParams: Pr
     </div>
     <NutritionSummary summary={dashboard.summary} target={dashboard.target} />
     <TargetForm date={dashboard.date} target={dashboard.target} />
+    <WeightSection key={dashboard.date} date={dashboard.date} weight={dashboard.weight} />
     {MEAL_SECTIONS.map((mealType) => <MealSection key={mealType} date={dashboard.date} mealType={mealType} entries={grouped[mealType]} />)}
   </main>;
 }

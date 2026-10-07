@@ -98,6 +98,13 @@ describe("toNutritionTargetDTO / toBodyWeightDTO", () => {
 
   it("converts body weight to number and measuredAt to ISO", () => {
     expect(toBodyWeightDTO({ id: "w", measuredAt: new Date("2026-09-28T01:00:00.000Z"), weightKg: new Prisma.Decimal("70.55") }))
-      .toEqual({ id: "w", measuredAt: "2026-09-28T01:00:00.000Z", weightKg: 70.55 });
+      .toEqual({ id: "w", measuredAt: "2026-09-28T01:00:00.000Z", weightKg: 70.55, bodyFatPercent: null });
+  });
+
+  it("converts body fat to number, keeping null (not 0) when absent and 0 when recorded as 0", () => {
+    const base = { id: "w", measuredAt: new Date("2026-09-28T01:00:00.000Z"), weightKg: new Prisma.Decimal("70.55") };
+    expect(toBodyWeightDTO({ ...base, bodyFatPercent: new Prisma.Decimal("15.20") }).bodyFatPercent).toBe(15.2);
+    expect(toBodyWeightDTO({ ...base, bodyFatPercent: new Prisma.Decimal("0.00") }).bodyFatPercent).toBe(0);
+    expect(toBodyWeightDTO({ ...base, bodyFatPercent: null }).bodyFatPercent).toBeNull();
   });
 });

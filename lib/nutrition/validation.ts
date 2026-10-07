@@ -41,7 +41,7 @@ const fields = {
 };
 
 // A "YYYY-MM-DD" JST calendar date, converted without new Date(string) (shared by entryDate / effectiveFrom).
-const jstDate = z.string("日付が正しくありません。").transform((value, ctx) => {
+export const jstDate = z.string("日付が正しくありません。").transform((value, ctx) => {
   const date = parseJstDateString(value);
   if (!date) { ctx.addIssue({ code: "custom", message: "日付が正しくありません。" }); return z.NEVER; }
   return date;

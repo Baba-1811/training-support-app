@@ -6,6 +6,8 @@ import { requireUser } from "@/lib/auth/require-user";
 import {
   createNutritionEntryForUser, createNutritionTargetForUser, deleteNutritionEntryForUser, updateNutritionEntryForUser, NutritionError,
 } from "@/lib/nutrition/mutations";
+import { createBodyMeasurementForUser } from "@/lib/nutrition/body-mutations";
+import { createBodyMeasurementSchema } from "@/lib/nutrition/body-validation";
 import { createNutritionEntrySchema, createNutritionTargetSchema, deleteNutritionEntrySchema, updateNutritionEntrySchema } from "@/lib/nutrition/validation";
 import type { NutritionActionResult } from "@/lib/nutrition/types";
 
@@ -35,3 +37,4 @@ export async function createNutritionEntry(input: unknown) { return perform(crea
 export async function updateNutritionEntry(input: unknown) { return perform(updateNutritionEntrySchema, input, updateNutritionEntryForUser); }
 export async function deleteNutritionEntry(input: unknown) { return perform(deleteNutritionEntrySchema, input, deleteNutritionEntryForUser); }
 export async function createNutritionTarget(input: unknown) { return perform(createNutritionTargetSchema, input, createNutritionTargetForUser); }
+export async function createBodyMeasurement(input: unknown) { return perform(createBodyMeasurementSchema, input, createBodyMeasurementForUser); }

@@ -19,6 +19,14 @@ export function jstDayRange(date: Date): { start: Date; end: Date } {
   return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
 }
 
+// The instant stored as BodyMeasurement.measuredAt when a measurement is logged "for" a JST date: 12:00 JST of that
+// day (= 03:00Z), the middle of the JST day, so it sits 12h from both edges of jstDayRange(date) and read-by-day
+// always finds it. `date` is a JST calendar date anchored at UTC midnight (what parseJstDateString() returns).
+export const JST_MEASUREMENT_HOUR = 12;
+export function jstMeasurementInstant(date: Date): Date {
+  return new Date(date.getTime() - JST_OFFSET_MS + JST_MEASUREMENT_HOUR * 60 * 60 * 1000);
+}
+
 // Strict "YYYY-MM-DD" -> the JST calendar date anchored at UTC midnight (same shape as jstDateOnly()). Never goes
 // through new Date(string) parsing of the input, and rejects impossible dates such as 2026-02-30. null if invalid.
 export function parseJstDateString(value: string): Date | null {

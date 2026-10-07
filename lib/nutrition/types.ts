@@ -34,6 +34,7 @@ export type BodyWeightDTO = {
   id: string;
   measuredAt: string; // ISO instant
   weightKg: number;
+  bodyFatPercent: number | null;
 };
 
 export type NutritionActionResult =

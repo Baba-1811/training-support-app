@@ -110,7 +110,7 @@ describe("getBodyWeightForDateForUser", () => {
       id: "w", weightKg: new Prisma.Decimal("68.25"), measuredAt: new Date("2026-09-28T00:00:00.000Z"),
     });
     await expect(getBodyWeightForDateForUser(owner, date)).resolves.toEqual({
-      id: "w", measuredAt: "2026-09-28T00:00:00.000Z", weightKg: 68.25,
+      id: "w", measuredAt: "2026-09-28T00:00:00.000Z", weightKg: 68.25, bodyFatPercent: null,
     });
   });
 });

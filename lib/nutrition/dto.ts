@@ -66,6 +66,11 @@ export function toNutritionTargetDTO(row: {
   };
 }
 
-export function toBodyWeightDTO(row: { id: string; measuredAt: Date; weightKg: DecimalLike }): BodyWeightDTO {
-  return { id: row.id, measuredAt: row.measuredAt.toISOString(), weightKg: decimalToNumber(row.weightKg) };
+export function toBodyWeightDTO(row: {
+  id: string; measuredAt: Date; weightKg: DecimalLike; bodyFatPercent?: DecimalLike | null;
+}): BodyWeightDTO {
+  return {
+    id: row.id, measuredAt: row.measuredAt.toISOString(), weightKg: decimalToNumber(row.weightKg),
+    bodyFatPercent: decimalToNumber(row.bodyFatPercent ?? null),
+  };
 }
