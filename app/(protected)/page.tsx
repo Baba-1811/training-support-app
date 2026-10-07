@@ -6,11 +6,13 @@ import { buildGrowthSnapshot } from "@/lib/workouts/analytics-trend";
 import { splitInProgress } from "@/lib/workouts/in-progress";
 import { getTodayConditionForUser } from "@/lib/conditions/queries";
 import { getTodayRecommendationForUser } from "@/lib/recommendations/queries";
+import { getNutritionHomeForUser } from "@/lib/nutrition/queries";
 import { StartWorkoutForm } from "@/components/workouts/start-workout-form";
 import { InProgressWorkoutCard } from "@/components/workouts/in-progress-workout-card";
 import { RecentWorkoutsSection } from "@/components/workouts/recent-workouts-section";
 import { GrowthSnapshot } from "@/components/home/growth-snapshot";
 import { ConditionCard } from "@/components/home/condition-card";
+import { NutritionCard } from "@/components/home/nutrition-card";
 import { RecommendationCard } from "@/components/home/recommendation-card";
 
 const RECENT_WORKOUT_COUNT = 3;
@@ -29,9 +31,10 @@ export default async function Home() {
   // workouts, today's Daily Condition (its own MuscleCondition rows ride along in one nested select), and
   // today's Recommendation (its ForUser variant re-reads Condition internally for the engine's own shape — an
   // accepted duplicate single-row read, not an N+1 — alongside its own candidate/history queries).
-  const [recent, trends, inProgress, condition, recommendation] = await Promise.all([
+  const [recent, trends, inProgress, condition, recommendation, nutrition] = await Promise.all([
     listCompletedWorkoutsForUser(user.id, RECENT_WORKOUT_COUNT), listExerciseTrendsForUser(user.id),
     listInProgressWorkoutsForUser(user.id), getTodayConditionForUser(user.id), getTodayRecommendationForUser(user.id),
+    getNutritionHomeForUser(user.id), // today only: entries, effective target, today's weight (3 small reads)
   ]);
   const { current, others } = splitInProgress(inProgress);
   return <main className="mx-auto w-full max-w-[480px] space-y-6 px-4 py-5 text-slate-900">
@@ -60,6 +63,8 @@ export default async function Home() {
         </>
         : <StartWorkoutForm compact />}
     </section>
+
+    <NutritionCard nutrition={nutrition} />
 
     {/* 今日の状態 -> 今日やること (above) -> 最近の成長 -> 最近のトレーニング: growth before recent activity. */}
     <GrowthSnapshot snapshot={buildGrowthSnapshot(trends)} />

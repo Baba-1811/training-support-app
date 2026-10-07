@@ -16,7 +16,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 import {
   getBodyWeightForDateForUser, getCurrentNutritionTargetForUser, getNutritionDashboard, getNutritionDashboardForUser,
-  getNutritionEntriesForUser, getRecentBodyWeightsForUser,
+  getNutritionEntriesForUser, getNutritionHomeForUser, getRecentBodyWeightsForUser,
 } from "@/lib/nutrition/queries";
 
 const owner = "11111111-1111-4111-8111-111111111111";
@@ -190,5 +190,51 @@ describe("getNutritionDashboardForUser / getNutritionDashboard", () => {
     await expect(getNutritionDashboard(date)).rejects.toThrow("REDIRECT");
     expect(mocks.nutritionEntry.findMany).not.toHaveBeenCalled();
     expect(mocks.bodyMeasurement.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("getNutritionHomeForUser", () => {
+  const entry = (id: string, calories: number) => ({
+    id, entryDate: date, mealType: "LUNCH", name: id, calories, proteinGrams: null, fatGrams: null, carbsGrams: null, createdAt: new Date(),
+  });
+
+  it("nothing recorded: 0 items, 0 kcal, no target, no weight", async () => {
+    await expect(getNutritionHomeForUser(owner, date)).resolves.toEqual({
+      date: "2026-09-28", entryCount: 0, calories: 0, targetCalories: null, weight: null,
+    });
+  });
+
+  it("counts entries (items, not meals), sums calories, and carries the effective target and today's weight", async () => {
+    mocks.nutritionEntry.findMany.mockResolvedValue([entry("a", 600), entry("b", 450), entry("c", 800)]);
+    mocks.nutritionTarget.findFirst.mockResolvedValue({
+      id: "t", targetCalories: 2200, targetProtein: null, targetFat: null, targetCarbs: null, effectiveFrom: new Date("2026-09-01T00:00:00Z"),
+    });
+    mocks.bodyMeasurement.findFirst.mockResolvedValue({
+      id: "w", weightKg: new Prisma.Decimal("65.40"), bodyFatPercent: null, measuredAt: new Date("2026-09-28T03:00:00Z"),
+    });
+    const result = await getNutritionHomeForUser(owner, date);
+    expect([result.entryCount, result.calories, result.targetCalories]).toEqual([3, 1850, 2200]);
+    expect(result.weight).toMatchObject({ weightKg: 65.4, bodyFatPercent: null });
+  });
+
+  it("a target of 0 is passed through as 0 (the card decides not to divide by it)", async () => {
+    mocks.nutritionTarget.findFirst.mockResolvedValue({
+      id: "t", targetCalories: 0, targetProtein: null, targetFat: null, targetCarbs: null, effectiveFrom: new Date("2026-09-01T00:00:00Z"),
+    });
+    expect((await getNutritionHomeForUser(owner, date)).targetCalories).toBe(0);
+  });
+
+  it("is owner-scoped, reuses the current-target and day-weight semantics, and neither authenticates nor reads 30-day weights", async () => {
+    await getNutritionHomeForUser(other, date);
+    expect(mocks.auth).not.toHaveBeenCalled();
+    expect(mocks.nutritionEntry.findMany.mock.calls[0][0].where).toEqual({ userId: other, entryDate: date });
+    expect(mocks.nutritionTarget.findFirst.mock.calls[0][0]).toMatchObject({
+      where: { userId: other, effectiveFrom: { lte: date } }, orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
+    });
+    expect(mocks.bodyMeasurement.findFirst.mock.calls[0][0].where).toEqual({ userId: other, measuredAt: { gte: dayStart, lt: dayEnd } });
+    expect(mocks.nutritionEntry.findMany).toHaveBeenCalledTimes(1);
+    expect(mocks.nutritionTarget.findFirst).toHaveBeenCalledTimes(1);
+    expect(mocks.bodyMeasurement.findFirst).toHaveBeenCalledTimes(1);
+    expect(mocks.bodyMeasurement.findMany).not.toHaveBeenCalled();
   });
 });

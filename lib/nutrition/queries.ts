@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/require-user";
 import { jstDateOnly, jstDayRange } from "@/lib/date/jst";
 import { summarizeNutrition, toBodyWeightDTO, toNutritionEntryDTOs, toNutritionTargetDTO } from "./dto";
-import type { BodyWeightDTO, NutritionDashboardDTO, NutritionEntryDTO, NutritionTargetDTO } from "./types";
+import type { BodyWeightDTO, NutritionDashboardDTO, NutritionEntryDTO, NutritionHomeDTO, NutritionTargetDTO } from "./types";
 
 // Every date argument here is a JST calendar date anchored at UTC midnight (what jstDateOnly() returns), the
 // same convention as the other *ForUser queries. Every query is scoped by userId; the *ForUser variants never
@@ -72,4 +72,18 @@ export async function getNutritionDashboardForUser(userId: string, date: Date = 
 export async function getNutritionDashboard(date?: Date): Promise<NutritionDashboardDTO> {
   const user = await requireUser();
   return getNutritionDashboardForUser(user.id, date);
+}
+
+// Lean read for the Home card: reuses the dashboard's own day/target/weight reads (3 independent queries) but skips
+// the 30-day weight list the /nutrition page needs. Takes the userId Home already got from its single requireUser().
+export async function getNutritionHomeForUser(userId: string, date: Date = jstDateOnly()): Promise<NutritionHomeDTO> {
+  const [entries, target, weight] = await Promise.all([
+    getNutritionEntriesForUser(userId, date),
+    getCurrentNutritionTargetForUser(userId, date),
+    getBodyWeightForDateForUser(userId, date),
+  ]);
+  return {
+    date: date.toISOString().slice(0, 10), entryCount: entries.length, calories: summarizeNutrition(entries).calories,
+    targetCalories: target?.targetCalories ?? null, weight,
+  };
 }

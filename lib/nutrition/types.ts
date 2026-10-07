@@ -49,3 +49,12 @@ export type NutritionDashboardDTO = {
   weight: BodyWeightDTO | null; // the day's weight (latest measurement of that JST day)
   recentWeights: BodyWeightDTO[]; // oldest -> newest
 };
+
+// Home card: only what "today" needs (no 30-day weights, no entry list).
+export type NutritionHomeDTO = {
+  date: string; // YYYY-MM-DD, the JST day
+  entryCount: number; // NutritionEntry rows (food items), not meals
+  calories: number;
+  targetCalories: number | null; // the target in effect on `date`; null = none set
+  weight: BodyWeightDTO | null; // that day's latest measurement; null = not recorded
+};
